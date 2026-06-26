@@ -1,6 +1,8 @@
 package com.family.bankapp.update
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -87,16 +89,28 @@ object AppUpdateInstaller {
     }
 
     fun startInstall(context: Context, apkFile: File) {
+        require(apkFile.exists() && apkFile.length() > 0L) {
+            "Downloaded APK is missing or empty"
+        }
+        val launchContext = context.findActivity() ?: context
         val uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
+            launchContext,
+            "${launchContext.packageName}.fileprovider",
             apkFile
         )
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (launchContext !is Activity) {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
         }
-        context.startActivity(intent)
+        launchContext.startActivity(intent)
+    }
+
+    private tailrec fun Context.findActivity(): Activity? = when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
     }
 }

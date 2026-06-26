@@ -7,8 +7,11 @@ import com.family.bankapp.update.AppDownloadProgress
 import com.family.bankapp.update.AppUpdateClient
 import com.family.bankapp.update.AppUpdateInstaller
 import com.family.bankapp.update.AppUpdateManifest
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
@@ -27,6 +30,9 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val _state = MutableStateFlow<AppUpdateUiState>(AppUpdateUiState.Idle)
     val state: StateFlow<AppUpdateUiState> = _state.asStateFlow()
+
+    private val _launchInstall = MutableSharedFlow<File>(extraBufferCapacity = 1)
+    val launchInstall: SharedFlow<File> = _launchInstall.asSharedFlow()
 
     val currentVersionName: String
         get() = AppUpdateInstaller.currentVersionName(getApplication())
@@ -56,8 +62,16 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun updateNow() {
-        val manifest = (_state.value as? AppUpdateUiState.Available)?.manifest ?: return
-        downloadAndInstall(manifest)
+        when (val current = _state.value) {
+            is AppUpdateUiState.Available -> downloadAndInstall(current.manifest)
+            is AppUpdateUiState.ReadyToInstall -> requestInstall(current.apkFile, current.manifest)
+            else -> Unit
+        }
+    }
+
+    private fun requestInstall(apkFile: File, manifest: AppUpdateManifest) {
+        _state.value = AppUpdateUiState.ReadyToInstall(manifest, apkFile)
+        _launchInstall.tryEmit(apkFile)
     }
 
     private fun downloadAndInstall(manifest: AppUpdateManifest) {
@@ -78,8 +92,7 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
                 _state.value = AppUpdateUiState.Downloading(progress)
             }
                 .onSuccess { file ->
-                    _state.value = AppUpdateUiState.ReadyToInstall(manifest, file)
-                    AppUpdateInstaller.startInstall(context, file)
+                    requestInstall(file, manifest)
                 }
                 .onFailure { e ->
                     _state.value = AppUpdateUiState.Error(e.message ?: "Download failed")

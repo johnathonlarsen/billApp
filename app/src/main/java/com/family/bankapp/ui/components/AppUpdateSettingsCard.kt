@@ -11,6 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -26,6 +27,12 @@ import com.family.bankapp.ui.viewmodel.AppUpdateViewModel
 fun AppUpdateSettingsCard(vm: AppUpdateViewModel = viewModel()) {
     val state by vm.state.collectAsState()
     val context = LocalContext.current
+
+    LaunchedEffect(vm) {
+        vm.launchInstall.collect { apkFile ->
+            AppUpdateInstaller.startInstall(context, apkFile)
+        }
+    }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -87,6 +94,25 @@ fun AppUpdateSettingsCard(vm: AppUpdateViewModel = viewModel()) {
                     }
                 }
 
+                is AppUpdateUiState.ReadyToInstall -> {
+                    Text(
+                        "Update downloaded: version ${s.manifest.versionName}",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "If the installer did not open, tap Open installer below.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Button(
+                        onClick = vm::updateNow,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Open installer")
+                    }
+                }
+
                 is AppUpdateUiState.UpToDate -> {
                     Text(
                         "You're on the latest version.",
@@ -116,7 +142,8 @@ fun AppUpdateSettingsCard(vm: AppUpdateViewModel = viewModel()) {
 
             val showCheckButton = state !is AppUpdateUiState.Checking &&
                 state !is AppUpdateUiState.Downloading &&
-                state !is AppUpdateUiState.Available
+                state !is AppUpdateUiState.Available &&
+                state !is AppUpdateUiState.ReadyToInstall
 
             if (showCheckButton) {
                 OutlinedButton(
