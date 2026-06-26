@@ -12,6 +12,8 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
+typealias DownloadProgressCallback = (AppDownloadProgress) -> Unit
+
 object AppUpdateInstaller {
 
     fun currentVersionCode(context: Context): Int {
@@ -47,29 +49,42 @@ object AppUpdateInstaller {
         }
     }
 
-    suspend fun downloadApk(context: Context, manifest: AppUpdateManifest): Result<File> =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val dir = File(context.cacheDir, "updates").apply { mkdirs() }
-                val target = File(dir, "FamilyBank.apk")
-                val conn = (URL(manifest.apkUrl).openConnection() as HttpURLConnection).apply {
-                    requestMethod = "GET"
-                    connectTimeout = 30_000
-                    readTimeout = 120_000
-                    instanceFollowRedirects = true
-                }
-                val code = conn.responseCode
-                if (code !in 200..299) {
-                    error("Download failed ($code)")
-                }
-                conn.inputStream.use { input ->
-                    target.outputStream().use { output ->
-                        input.copyTo(output)
+    suspend fun downloadApk(
+        context: Context,
+        manifest: AppUpdateManifest,
+        onProgress: DownloadProgressCallback = {}
+    ): Result<File> = withContext(Dispatchers.IO) {
+        runCatching {
+            val dir = File(context.cacheDir, "updates").apply { mkdirs() }
+            val target = File(dir, "FamilyBank.apk")
+            val conn = (URL(manifest.apkUrl).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 30_000
+                readTimeout = 120_000
+                instanceFollowRedirects = true
+            }
+            val code = conn.responseCode
+            if (code !in 200..299) {
+                error("Download failed ($code)")
+            }
+            val totalBytes = conn.contentLengthLong.takeIf { it > 0L }
+            onProgress(AppDownloadProgress(0, totalBytes))
+            conn.inputStream.use { input ->
+                target.outputStream().use { output ->
+                    val buffer = ByteArray(8192)
+                    var downloaded = 0L
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read <= 0) break
+                        output.write(buffer, 0, read)
+                        downloaded += read
+                        onProgress(AppDownloadProgress(downloaded, totalBytes))
                     }
                 }
-                target
             }
+            target
         }
+    }
 
     fun startInstall(context: Context, apkFile: File) {
         val uri = FileProvider.getUriForFile(

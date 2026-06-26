@@ -3,6 +3,7 @@ package com.family.bankapp.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.family.bankapp.update.AppDownloadProgress
 import com.family.bankapp.update.AppUpdateClient
 import com.family.bankapp.update.AppUpdateInstaller
 import com.family.bankapp.update.AppUpdateManifest
@@ -17,7 +18,7 @@ sealed class AppUpdateUiState {
     data object Checking : AppUpdateUiState()
     data object UpToDate : AppUpdateUiState()
     data class Available(val manifest: AppUpdateManifest) : AppUpdateUiState()
-    data object Downloading : AppUpdateUiState()
+    data class Downloading(val progress: AppDownloadProgress) : AppUpdateUiState()
     data class ReadyToInstall(val manifest: AppUpdateManifest, val apkFile: File) : AppUpdateUiState()
     data class Error(val message: String) : AppUpdateUiState()
 }
@@ -61,7 +62,9 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
 
     private fun downloadAndInstall(manifest: AppUpdateManifest) {
         viewModelScope.launch {
-            _state.value = AppUpdateUiState.Downloading
+            _state.value = AppUpdateUiState.Downloading(
+                AppDownloadProgress(0, null)
+            )
             val context = getApplication<Application>()
             if (!AppUpdateInstaller.canInstallPackages(context)) {
                 _state.value = AppUpdateUiState.Error(
@@ -71,7 +74,9 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
                 return@launch
             }
 
-            AppUpdateInstaller.downloadApk(context, manifest)
+            AppUpdateInstaller.downloadApk(context, manifest) { progress ->
+                _state.value = AppUpdateUiState.Downloading(progress)
+            }
                 .onSuccess { file ->
                     _state.value = AppUpdateUiState.ReadyToInstall(manifest, file)
                     AppUpdateInstaller.startInstall(context, file)
