@@ -10,9 +10,14 @@ local.properties
 *.apk
 *.ap_
 *.aab
+!docs/FamilyBank.apk
 
 app/build/
+
+# Supabase CLI local state
+supabase/.temp/
 
 # Plaid server secrets
 plaid-server/node_modules/
 plaid-server/.env
+plaid-server/items.json

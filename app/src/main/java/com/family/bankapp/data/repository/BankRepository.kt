@@ -26,6 +26,8 @@ class BankRepository(
 
     fun observeBanks(): Flow<List<BankEntity>> = bankDao.observeAll()
     fun observeBankCount(): Flow<Int> = bankDao.observeCount()
+    fun observePlaidConnectedCount(): Flow<Int> = bankDao.observePlaidConnectedCount()
+    suspend fun getPlaidConnectedCount(): Int = bankDao.getPlaidConnectedCount()
     fun observeAccounts(): Flow<List<AccountEntity>> = accountDao.observeAll()
     fun observeAccountsByBank(bankId: Long): Flow<List<AccountEntity>> = accountDao.observeByBank(bankId)
     fun observeActiveBills(): Flow<List<BillEntity>> = billDao.observeActive()
@@ -70,6 +72,18 @@ class BankRepository(
     }
 
     suspend fun updateBank(bank: BankEntity) = bankDao.update(bank)
+
+    suspend fun savePlaidConnection(bankId: Long, itemId: String) {
+        val bank = bankDao.getById(bankId) ?: return
+        bankDao.update(
+            bank.copy(
+                plaidItemId = itemId,
+                plaidAccessToken = null,
+                connectionType = ConnectionType.CONNECTED,
+                lastSyncedAt = System.currentTimeMillis()
+            )
+        )
+    }
     suspend fun deleteBank(bank: BankEntity) = bankDao.delete(bank)
 
     suspend fun markBankConnected(bankId: Long) {

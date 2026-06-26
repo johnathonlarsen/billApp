@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.family.bankapp.ui.components.PlaidUsageTrackerCard
 import com.family.bankapp.ui.components.MoneyText
 import com.family.bankapp.ui.components.SectionHeader
 import com.family.bankapp.ui.components.StatCard
@@ -48,6 +49,13 @@ fun DashboardScreen(padding: PaddingValues) {
         contentPadding = PaddingValues(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        item {
+            PlaidUsageTrackerCard(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                compact = true
+            )
+        }
+
         item {
             Column(Modifier.padding(16.dp)) {
                 Text("Bill tracker", style = MaterialTheme.typography.headlineSmall)

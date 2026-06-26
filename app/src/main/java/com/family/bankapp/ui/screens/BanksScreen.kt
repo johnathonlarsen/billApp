@@ -31,6 +31,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -45,10 +46,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.family.bankapp.data.model.AccountType
 import com.family.bankapp.data.repository.BankRepository
+import com.family.bankapp.ui.components.PlaidUsageTrackerCard
 import com.family.bankapp.ui.components.SectionHeader
 import com.family.bankapp.ui.components.parseColorHex
 import com.family.bankapp.ui.viewmodel.BankWithAccounts
 import com.family.bankapp.ui.viewmodel.BanksViewModel
+import com.plaid.link.FastOpenPlaidLink
+import com.plaid.link.result.LinkExit
+import com.plaid.link.result.LinkSuccess
 
 @Composable
 fun BanksScreen(padding: PaddingValues, onOpenBank: (Long) -> Unit) {
@@ -158,6 +163,39 @@ fun BankDetailScreen(
 
     var showAddAccount by remember { mutableStateOf(false) }
     var editingAccount by remember { mutableStateOf<com.family.bankapp.data.entity.AccountEntity?>(null) }
+    var plaidBlockMessage by remember { mutableStateOf<String?>(null) }
+    var plaidConfirmMessage by remember { mutableStateOf<String?>(null) }
+    var plaidConnectPending by remember { mutableStateOf(false) }
+    var plaidLinkBusy by remember { mutableStateOf(false) }
+    var plaidStatusMessage by remember { mutableStateOf<String?>(null) }
+
+    val plaidLauncher = rememberLauncherForActivityResult(FastOpenPlaidLink()) { result ->
+        when (result) {
+            is LinkSuccess -> {
+                plaidLinkBusy = true
+                val replacingItemId = item?.bank?.plaidItemId
+                vm.completePlaidLink(
+                    bankId = bankId,
+                    publicToken = result.publicToken,
+                    replacingItemId = replacingItemId
+                ) { linkResult ->
+                    plaidLinkBusy = false
+                    linkResult.onSuccess {
+                        plaidStatusMessage = "${item?.bank?.name ?: "Bank"} connected via Plaid."
+                    }.onFailure { e ->
+                        plaidStatusMessage = e.message ?: "Could not save Plaid connection"
+                    }
+                }
+            }
+            is LinkExit -> {
+                result.error?.let { err ->
+                    plaidStatusMessage = err.displayMessage ?: "Plaid Link was cancelled"
+                }
+            }
+        }
+    }
+
+    val isPlaidConnected = !item?.bank?.plaidItemId.isNullOrBlank()
 
     if (item == null) {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
@@ -188,6 +226,64 @@ fun BankDetailScreen(
                 .padding(innerPadding),
             contentPadding = PaddingValues(bottom = 88.dp)
         ) {
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Plaid connection", fontWeight = FontWeight.Bold)
+                        if (isPlaidConnected) {
+                            Text(
+                                "Connected — transaction sync for bill payment tracking comes next.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            Text(
+                                "Optional. Connect only when ready — each bank uses one of your 10 lifetime Trial slots.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                plaidConnectPending = true
+                                vm.checkBeforePlaidConnect(item.bank) { check ->
+                                    plaidConnectPending = false
+                                    if (!check.allowed) {
+                                        plaidBlockMessage = check.blockReason
+                                    } else {
+                                        plaidConfirmMessage = check.confirmMessage
+                                    }
+                                }
+                            },
+                            enabled = !plaidConnectPending && !plaidLinkBusy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                when {
+                                    plaidConnectPending -> "Checking limit…"
+                                    plaidLinkBusy -> "Connecting…"
+                                    isPlaidConnected -> "Reconnect via Plaid"
+                                    else -> "Connect via Plaid"
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                PlaidUsageTrackerCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    compact = true
+                )
+            }
+
             item {
                 Text(
                     "Accounts here are labels only — used when linking bills to “pay from” this bank.",
@@ -241,6 +337,57 @@ fun BankDetailScreen(
                 }
             }
         }
+    }
+
+    plaidBlockMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { plaidBlockMessage = null },
+            title = { Text("Cannot connect") },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = { plaidBlockMessage = null }) { Text("OK") }
+            }
+        )
+    }
+
+    plaidConfirmMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { plaidConfirmMessage = null },
+            title = { Text("Confirm Plaid connection") },
+            text = { Text(message) },
+            confirmButton = {
+                Button(onClick = {
+                    val bank = item.bank
+                    plaidConfirmMessage = null
+                    plaidLinkBusy = true
+                    vm.preparePlaidLink(
+                        bank = bank,
+                        onReady = { handler ->
+                            plaidLinkBusy = false
+                            plaidLauncher.launch(handler)
+                        },
+                        onError = { message ->
+                            plaidLinkBusy = false
+                            plaidBlockMessage = message
+                        }
+                    )
+                }) { Text("Continue") }
+            },
+            dismissButton = {
+                TextButton(onClick = { plaidConfirmMessage = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    plaidStatusMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { plaidStatusMessage = null },
+            title = { Text("Plaid") },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = { plaidStatusMessage = null }) { Text("OK") }
+            }
+        )
     }
 
     if (showAddAccount) {

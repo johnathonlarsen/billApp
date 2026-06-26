@@ -1,3 +1,5 @@
+import java.time.Instant
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -13,8 +15,8 @@ android {
         applicationId = "com.family.bankapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 3
+        versionName = "1.1.1"
     }
 
     buildTypes {
@@ -49,8 +51,32 @@ afterEvaluate {
         rename { "FamilyBank.apk" }
         onlyIf { file("${System.getProperty("user.home")}/OneDrive").exists() }
     }
+
+    tasks.register("publishFamilyApk") {
+        dependsOn("assembleDebug", "copyApkToOneDrive")
+        doLast {
+            val versionCode = android.defaultConfig.versionCode
+            val versionName = android.defaultConfig.versionName
+            val apkSource = layout.buildDirectory.file("outputs/apk/debug/app-debug.apk").get().asFile
+            val docsDir = rootProject.file("docs")
+            docsDir.mkdirs()
+            apkSource.copyTo(docsDir.resolve("FamilyBank.apk"), overwrite = true)
+            val manifest = """
+                {
+                  "versionCode": $versionCode,
+                  "versionName": "$versionName",
+                  "apkUrl": "https://johnathonlarsen.github.io/billApp/FamilyBank.apk",
+                  "releasedAt": "${Instant.now()}",
+                  "notes": "Family Bank update"
+                }
+            """.trimIndent()
+            docsDir.resolve("app-update.json").writeText(manifest)
+            logger.lifecycle("Published docs/FamilyBank.apk and docs/app-update.json (v$versionName)")
+        }
+    }
+
     tasks.named("assembleDebug").configure {
-        finalizedBy("copyApkToOneDrive")
+        finalizedBy("publishFamilyApk")
     }
 }
 
@@ -76,6 +102,8 @@ dependencies {
 
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+    implementation("com.plaid.link:sdk-core:5.5.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

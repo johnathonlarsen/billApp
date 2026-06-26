@@ -23,6 +23,12 @@ interface BankDao {
     @Query("SELECT COUNT(*) FROM banks")
     suspend fun getCount(): Int
 
+    @Query("SELECT COUNT(*) FROM banks WHERE plaidItemId IS NOT NULL")
+    fun observePlaidConnectedCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM banks WHERE plaidItemId IS NOT NULL")
+    suspend fun getPlaidConnectedCount(): Int
+
     @Query("SELECT * FROM banks WHERE id = :id")
     suspend fun getById(id: Long): BankEntity?
 

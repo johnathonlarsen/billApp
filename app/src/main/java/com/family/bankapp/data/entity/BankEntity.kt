@@ -11,5 +11,9 @@ data class BankEntity(
     val colorHex: String,
     val connectionType: ConnectionType = ConnectionType.MANUAL,
     val lastSyncedAt: Long? = null,
-    val sortOrder: Int = 0
+    val sortOrder: Int = 0,
+    /** Set when connected via Plaid — counts toward Trial item limit. Token stays on server. */
+    val plaidItemId: String? = null,
+    /** Deprecated: access tokens must not be stored on device (Plaid policy). Always null. */
+    val plaidAccessToken: String? = null
 )

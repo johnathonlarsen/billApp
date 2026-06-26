@@ -26,6 +26,7 @@ import com.family.bankapp.ui.screens.BillEditScreen
 import com.family.bankapp.ui.screens.BillsScreen
 import com.family.bankapp.ui.screens.BanksScreen
 import com.family.bankapp.ui.screens.DashboardScreen
+import com.family.bankapp.ui.screens.PrivacyPolicyScreen
 import com.family.bankapp.ui.screens.SettingsScreen
 
 sealed class Screen(val route: String, val label: String) {
@@ -33,6 +34,7 @@ sealed class Screen(val route: String, val label: String) {
     data object Banks : Screen("banks", "Banks")
     data object Bills : Screen("bills", "Bills")
     data object Settings : Screen("settings", "Settings")
+    data object PrivacyPolicy : Screen("privacy-policy", "Privacy")
     data object BankDetail : Screen("bank/{bankId}", "Bank") {
         fun createRoute(bankId: Long) = "bank/$bankId"
     }
@@ -128,7 +130,13 @@ fun BankAppNavHost() {
                 )
             }
             composable(Screen.Settings.route) {
-                SettingsScreen(padding = androidx.compose.foundation.layout.PaddingValues())
+                SettingsScreen(
+                    padding = androidx.compose.foundation.layout.PaddingValues(),
+                    onOpenPrivacyPolicy = { navController.navigate(Screen.PrivacyPolicy.route) }
+                )
+            }
+            composable(Screen.PrivacyPolicy.route) {
+                PrivacyPolicyScreen(onBack = { navController.popBackStack() })
             }
         }
     }

@@ -1,5 +1,6 @@
 package com.family.bankapp.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -8,7 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.lazy.LazyColumn
-import com.family.bankapp.ui.viewmodel.SettingsViewModel
+import com.family.bankapp.ui.components.AppUpdateSettingsCard
+import com.family.bankapp.ui.components.PlaidUsageTrackerCard
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -18,6 +20,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -35,11 +38,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.family.bankapp.BankAppApplication
+import com.family.bankapp.FamilyAppConfig
 import com.family.bankapp.data.model.BillCategory
 import com.family.bankapp.data.model.BillRecurrence
 import com.family.bankapp.ui.viewmodel.BanksViewModel
 import com.family.bankapp.ui.components.EnumDropdownField
 import com.family.bankapp.ui.viewmodel.BillsViewModel
+import com.family.bankapp.ui.viewmodel.SettingsViewModel
 import com.family.bankapp.util.MoneyFormatter
 import java.time.LocalDate
 import java.time.ZoneId
@@ -259,7 +264,10 @@ fun BillEditScreen(
 }
 
 @Composable
-fun SettingsScreen(padding: PaddingValues) {
+fun SettingsScreen(
+    padding: PaddingValues,
+    onOpenPrivacyPolicy: () -> Unit = {}
+) {
     val vm: SettingsViewModel = viewModel()
     val reminderDays by vm.defaultReminderDays.collectAsState()
     val forecastDays by vm.forecastDays.collectAsState()
@@ -302,6 +310,44 @@ fun SettingsScreen(padding: PaddingValues) {
                     )
                 }
             }
+        }
+
+        item {
+            AppUpdateSettingsCard()
+        }
+
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onOpenPrivacyPolicy)
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Privacy policy", fontWeight = FontWeight.Bold)
+                    Text(
+                        "Required by Plaid before connecting real banks in Production. " +
+                            "Also available at the URL shown inside the policy (for Plaid Dashboard).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "View policy →",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+
+        item {
+            PlaidUsageTrackerCard(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                compact = false
+            )
+        }
+
+        item {
+            PlaidTrialSettingsCard()
         }
 
         item {
@@ -353,6 +399,25 @@ fun SettingsScreen(padding: PaddingValues) {
                 TextButton(onClick = { showSampleConfirm = false }) { Text("Cancel") }
             }
         )
+    }
+}
+
+@Composable
+private fun PlaidTrialSettingsCard() {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Plaid Sandbox", fontWeight = FontWeight.Bold)
+            Text(
+                "Safe testing with fake banks. ${FamilyAppConfig.PLAID_EXPECTED_ITEMS} household Items " +
+                    "(one login per institution). Production Trial slots are tracked above.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                "Daily transaction sync per bank (~${FamilyAppConfig.PLAID_EXPECTED_ITEMS * 30} API calls/mo).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

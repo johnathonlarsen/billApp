@@ -4,12 +4,21 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.family.bankapp.BankAppApplication
+import com.family.bankapp.FamilyAppConfig
 import com.family.bankapp.data.entity.AccountEntity
 import com.family.bankapp.data.entity.BankEntity
 import com.family.bankapp.data.model.AccountType
+import com.family.bankapp.plaid.PlaidApiClient
+import com.family.bankapp.plaid.PlaidConnectCheck
+import com.family.bankapp.plaid.PlaidLimitGuard
+import com.family.bankapp.sync.SupabaseSharedStateClient
+import com.plaid.link.Plaid
+import com.plaid.link.PlaidHandler
+import com.plaid.link.configuration.LinkTokenConfiguration
 import com.family.bankapp.util.BankColors
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -21,6 +30,7 @@ data class BankWithAccounts(
 class BanksViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as BankAppApplication
     private val repository = app.repository
+    private val settings = app.settingsRepository
 
     val banksWithAccounts = combine(
         repository.observeBanks(),
@@ -41,6 +51,62 @@ class BanksViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val color = BankColors.colorForIndex(bankCount.value)
             onResult(repository.addBank(name, color))
+        }
+    }
+
+    fun checkBeforePlaidConnect(bank: BankEntity, onResult: (PlaidConnectCheck) -> Unit) {
+        viewModelScope.launch {
+            val limit = settings.plaidItemLimit.first()
+            val localCount = repository.getPlaidConnectedCount()
+            val supabase = FamilyAppConfig.supabaseConfig()
+            val sharedUsage = SupabaseSharedStateClient.fetchPlaidUsage(supabase).getOrNull()
+            onResult(
+                PlaidLimitGuard.checkBeforeConnect(
+                    serverUsage = sharedUsage,
+                    localPlaidConnectedCount = localCount,
+                    configuredLimit = limit,
+                    bankName = bank.name,
+                    isReplacingExisting = !bank.plaidItemId.isNullOrBlank()
+                )
+            )
+        }
+    }
+
+    fun preparePlaidLink(
+        bank: BankEntity,
+        onReady: (PlaidHandler) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            PlaidApiClient.createLinkToken(bank.plaidItemId)
+                .onSuccess { result ->
+                    val config = LinkTokenConfiguration.Builder()
+                        .token(result.linkToken)
+                        .build()
+                    val handler = Plaid.create(getApplication(), config)
+                    onReady(handler)
+                }
+                .onFailure { e ->
+                    onError(e.message ?: "Could not start Plaid Link")
+                }
+        }
+    }
+
+    fun completePlaidLink(
+        bankId: Long,
+        publicToken: String,
+        replacingItemId: String?,
+        onResult: (Result<Unit>) -> Unit
+    ) {
+        viewModelScope.launch {
+            PlaidApiClient.exchangePublicToken(publicToken, replacingItemId)
+                .onSuccess { result ->
+                    repository.savePlaidConnection(bankId, result.itemId)
+                    onResult(Result.success(Unit))
+                }
+                .onFailure { e ->
+                    onResult(Result.failure(e))
+                }
         }
     }
 

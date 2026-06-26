@@ -10,7 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
-import com.family.bankapp.ui.navigation.BankAppNavHost
+import com.family.bankapp.ui.screens.AppAccessGate
 import com.family.bankapp.ui.theme.BankAppTheme
 
 class MainActivity : ComponentActivity() {
@@ -29,7 +29,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             BankAppTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    BankAppNavHost()
+                    AppAccessGate()
                 }
             }
         }
