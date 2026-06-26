@@ -3,6 +3,7 @@ package com.family.bankapp.plaid
 import com.family.bankapp.FamilyAppConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -75,6 +76,28 @@ object PlaidApiClient {
                 )
             }
         }
+
+    suspend fun listRestorableItems(): Result<List<PlaidRestorableItem>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val json = postFunction(
+                "plaid-items-list",
+                JSONObject().put("team_id", FamilyAppConfig.SUPABASE_TEAM_ID)
+            )
+            val items = json.optJSONArray("items") ?: JSONArray()
+            buildList {
+                for (i in 0 until items.length()) {
+                    val row = items.getJSONObject(i)
+                    add(
+                        PlaidRestorableItem(
+                            itemId = row.getString("item_id"),
+                            institutionName = row.optString("institution_name").ifBlank { "Unknown bank" },
+                            createdAt = row.optString("created_at").takeIf { it.isNotBlank() }
+                        )
+                    )
+                }
+            }
+        }
+    }
 
     fun postFunction(functionName: String, body: JSONObject): JSONObject {
         val base = FamilyAppConfig.SUPABASE_URL.trim().removeSuffix("/")

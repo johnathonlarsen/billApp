@@ -32,6 +32,15 @@ interface BankDao {
     @Query("SELECT * FROM banks WHERE id = :id")
     suspend fun getById(id: Long): BankEntity?
 
+    @Query("SELECT * FROM banks WHERE LOWER(TRIM(name)) = LOWER(TRIM(:name)) LIMIT 1")
+    suspend fun getByNameIgnoreCase(name: String): BankEntity?
+
+    @Query("SELECT * FROM banks WHERE plaidItemId = :itemId LIMIT 1")
+    suspend fun getByPlaidItemId(itemId: String): BankEntity?
+
+    @Query("SELECT plaidItemId FROM banks WHERE plaidItemId IS NOT NULL")
+    suspend fun getAllPlaidItemIds(): List<String>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(bank: BankEntity): Long
 

@@ -1,5 +1,11 @@
 import { serviceRoleKey, supabaseRestUrl } from './supabase.ts';
 
+export type VaultItemRow = {
+  item_id: string;
+  access_token: string;
+  created_at: string;
+};
+
 export async function storeItemAccessToken(
   teamId: string,
   itemId: string,
@@ -37,6 +43,27 @@ export async function storeItemAccessToken(
     const text = await response.text();
     throw new Error(`Failed to store Plaid token server-side (${response.status}): ${text}`);
   }
+}
+
+export async function listActiveVaultItems(teamId: string): Promise<VaultItemRow[]> {
+  const base = supabaseRestUrl();
+  const key = serviceRoleKey();
+  const response = await fetch(
+    `${base}/rest/v1/plaid_item_vault?team_id=eq.${encodeURIComponent(teamId)}&removed_at=is.null&select=item_id,access_token,created_at&order=created_at.desc`,
+    {
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to list vault items (${response.status}): ${text}`);
+  }
+
+  return await response.json() as VaultItemRow[];
 }
 
 export async function getItemAccessToken(itemId: string): Promise<string | null> {

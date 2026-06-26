@@ -12,6 +12,8 @@ import com.family.bankapp.plaid.PlaidApiClient
 import com.family.bankapp.plaid.PlaidConnectCheck
 import com.family.bankapp.plaid.PlaidLimitGuard
 import com.family.bankapp.plaid.PlaidBankSyncResult
+import com.family.bankapp.plaid.PlaidNameMatcher
+import com.family.bankapp.plaid.PlaidRestorableItem
 import com.family.bankapp.plaid.PlaidSyncClient
 import com.family.bankapp.sync.SupabaseSharedStateClient
 import com.plaid.link.Plaid
@@ -63,16 +65,100 @@ class BanksViewModel(application: Application) : AndroidViewModel(application) {
             val localCount = repository.getPlaidConnectedCount()
             val supabase = FamilyAppConfig.supabaseConfig()
             val sharedUsage = SupabaseSharedStateClient.fetchPlaidUsage(supabase).getOrNull()
-            onResult(
-                PlaidLimitGuard.checkBeforeConnect(
-                    serverUsage = sharedUsage,
-                    localPlaidConnectedCount = localCount,
-                    configuredLimit = limit,
-                    bankName = bank.name,
-                    isReplacingExisting = !bank.plaidItemId.isNullOrBlank()
-                )
+            val baseCheck = PlaidLimitGuard.checkBeforeConnect(
+                serverUsage = sharedUsage,
+                localPlaidConnectedCount = localCount,
+                configuredLimit = limit,
+                bankName = bank.name,
+                isReplacingExisting = !bank.plaidItemId.isNullOrBlank()
             )
+            if (!baseCheck.allowed || !bank.plaidItemId.isNullOrBlank()) {
+                onResult(baseCheck)
+                return@launch
+            }
+
+            val matchingRestore = findMatchingRestorableItem(bank.name)
+            if (matchingRestore != null) {
+                onResult(
+                    baseCheck.copy(
+                        allowed = false,
+                        blockReason = buildString {
+                            append("A saved Plaid link for ${matchingRestore.institutionName} already exists.\n\n")
+                            append("Tap Restore saved link instead — no new Trial slot needed.")
+                        }
+                    )
+                )
+            } else {
+                onResult(baseCheck)
+            }
         }
+    }
+
+    fun fetchRestorablePlaidItems(onResult: (Result<List<PlaidRestorableItem>>) -> Unit) {
+        viewModelScope.launch {
+            PlaidApiClient.listRestorableItems()
+                .map { items -> filterUnclaimedRestorableItems(items) }
+                .also { onResult(it) }
+        }
+    }
+
+    fun restorePlaidLink(
+        bankId: Long,
+        itemId: String,
+        onResult: (Result<PlaidBankSyncResult>) -> Unit
+    ) {
+        viewModelScope.launch {
+            val bank = repository.getBank(bankId)
+                ?: return@launch onResult(Result.failure(IllegalStateException("Bank not found")))
+
+            if (!bank.plaidItemId.isNullOrBlank()) {
+                onResult(Result.failure(IllegalStateException("This bank is already connected via Plaid")))
+                return@launch
+            }
+
+            repository.getBankByPlaidItemId(itemId)?.let { existing ->
+                onResult(
+                    Result.failure(
+                        IllegalStateException("That link is already assigned to ${existing.name}")
+                    )
+                )
+                return@launch
+            }
+
+            val restorable = filterUnclaimedRestorableItems(
+                PlaidApiClient.listRestorableItems().getOrElse { e ->
+                    onResult(Result.failure(e))
+                    return@launch
+                }
+            )
+            if (restorable.none { it.itemId == itemId }) {
+                onResult(Result.failure(IllegalStateException("Saved Plaid link not found or already in use")))
+                return@launch
+            }
+
+            runCatching { repository.savePlaidConnection(bankId, itemId) }
+                .onFailure { e ->
+                    onResult(Result.failure(e))
+                    return@launch
+                }
+
+            PlaidSyncClient.syncBank(repository, bankId, itemId, resetTransactionCursor = false)
+                .onSuccess { onResult(Result.success(it)) }
+                .onFailure { e -> onResult(Result.failure(e)) }
+        }
+    }
+
+    private suspend fun filterUnclaimedRestorableItems(
+        items: List<PlaidRestorableItem>
+    ): List<PlaidRestorableItem> {
+        val linkedIds = repository.getLocalPlaidItemIds().toSet()
+        return items.filter { it.itemId !in linkedIds }
+    }
+
+    private suspend fun findMatchingRestorableItem(bankName: String): PlaidRestorableItem? {
+        val items = PlaidApiClient.listRestorableItems().getOrNull() ?: return null
+        return filterUnclaimedRestorableItems(items)
+            .firstOrNull { PlaidNameMatcher.likelySameBank(bankName, it.institutionName) }
     }
 
     fun preparePlaidLink(
@@ -104,6 +190,18 @@ class BanksViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             PlaidApiClient.exchangePublicToken(publicToken, replacingItemId)
                 .onSuccess { result ->
+                    repository.getBankByPlaidItemId(result.itemId)?.let { existing ->
+                        if (existing.id != bankId) {
+                            onResult(
+                                Result.failure(
+                                    IllegalStateException(
+                                        "This Plaid login is already linked to ${existing.name}. Use Restore saved link on that bank instead."
+                                    )
+                                )
+                            )
+                            return@launch
+                        }
+                    }
                     repository.savePlaidConnection(bankId, result.itemId)
                     PlaidSyncClient.syncBank(repository, bankId, result.itemId, resetTransactionCursor = true)
                         .onSuccess { sync -> onResult(Result.success(sync)) }

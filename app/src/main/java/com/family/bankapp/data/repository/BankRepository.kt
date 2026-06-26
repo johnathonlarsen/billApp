@@ -54,6 +54,9 @@ class BankRepository(
     }
 
     suspend fun getBank(id: Long): BankEntity? = bankDao.getById(id)
+    suspend fun getBankByName(name: String): BankEntity? = bankDao.getByNameIgnoreCase(name.trim())
+    suspend fun getBankByPlaidItemId(itemId: String): BankEntity? = bankDao.getByPlaidItemId(itemId)
+    suspend fun getLocalPlaidItemIds(): List<String> = bankDao.getAllPlaidItemIds()
     suspend fun getAccount(id: Long): AccountEntity? = accountDao.getById(id)
     suspend fun getBill(id: Long): BillEntity? = billDao.getById(id)
 
@@ -61,13 +64,24 @@ class BankRepository(
 
     suspend fun addBank(name: String, colorHex: String): Result<Long> {
         return try {
+            val trimmed = name.trim()
+            if (trimmed.isBlank()) {
+                return Result.failure(IllegalStateException("Bank name is required"))
+            }
+            bankDao.getByNameIgnoreCase(trimmed)?.let { existing ->
+                return Result.failure(
+                    IllegalStateException(
+                        "\"${existing.name}\" is already in your bank list. Open it and use Restore saved link if Plaid was disconnected."
+                    )
+                )
+            }
             val currentCount = bankDao.getCount()
             if (currentCount >= MAX_BANKS) {
                 Result.failure(IllegalStateException("Maximum of $MAX_BANKS banks allowed"))
             } else {
                 val id = bankDao.insert(
                     BankEntity(
-                        name = name.trim(),
+                        name = trimmed,
                         colorHex = colorHex,
                         sortOrder = currentCount
                     )
@@ -82,6 +96,11 @@ class BankRepository(
     suspend fun updateBank(bank: BankEntity) = bankDao.update(bank)
 
     suspend fun savePlaidConnection(bankId: Long, itemId: String) {
+        getBankByPlaidItemId(itemId)?.let { existing ->
+            if (existing.id != bankId) {
+                error("This Plaid link is already assigned to ${existing.name}")
+            }
+        }
         val bank = bankDao.getById(bankId) ?: return
         bankDao.update(
             bank.copy(

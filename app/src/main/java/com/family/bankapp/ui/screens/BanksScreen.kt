@@ -32,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -48,6 +49,8 @@ import com.family.bankapp.data.entity.PlaidTransactionEntity
 import com.family.bankapp.data.model.AccountType
 import com.family.bankapp.util.MoneyFormatter
 import com.family.bankapp.data.repository.BankRepository
+import com.family.bankapp.plaid.PlaidNameMatcher
+import com.family.bankapp.plaid.PlaidRestorableItem
 import com.family.bankapp.ui.components.PlaidUsageTrackerCard
 import com.family.bankapp.ui.components.SectionHeader
 import com.family.bankapp.ui.components.parseColorHex
@@ -110,11 +113,13 @@ fun BanksScreen(padding: PaddingValues, onOpenBank: (Long) -> Unit) {
     if (showAddBank) {
         AddBankDialog(
             onDismiss = { showAddBank = false },
-            onConfirm = { name ->
+            onConfirm = { name, onError ->
                 vm.addBank(name) { result ->
                     result.onSuccess { id ->
                         showAddBank = false
                         onOpenBank(id)
+                    }.onFailure { e ->
+                        onError(e.message ?: "Could not add bank")
                     }
                 }
             }
@@ -171,8 +176,29 @@ fun BankDetailScreen(
     var plaidLinkBusy by remember { mutableStateOf(false) }
     var plaidSyncBusy by remember { mutableStateOf(false) }
     var plaidStatusMessage by remember { mutableStateOf<String?>(null) }
+    var restorableItems by remember { mutableStateOf<List<PlaidRestorableItem>>(emptyList()) }
+    var restorableLoading by remember { mutableStateOf(false) }
+    var restoreBusyItemId by remember { mutableStateOf<String?>(null) }
 
     val plaidTransactions by vm.observePlaidTransactions(bankId).collectAsState(initial = emptyList())
+
+    val isPlaidConnected = !item?.bank?.plaidItemId.isNullOrBlank()
+    val matchingRestore = remember(item?.bank?.name, restorableItems) {
+        val bankName = item?.bank?.name ?: return@remember null
+        restorableItems.firstOrNull { PlaidNameMatcher.likelySameBank(bankName, it.institutionName) }
+    }
+
+    LaunchedEffect(bankId, isPlaidConnected) {
+        if (!isPlaidConnected) {
+            restorableLoading = true
+            vm.fetchRestorablePlaidItems { result ->
+                restorableLoading = false
+                result.onSuccess { restorableItems = it }
+            }
+        } else {
+            restorableItems = emptyList()
+        }
+    }
 
     val plaidLauncher = rememberLauncherForActivityResult(FastOpenPlaidLink()) { result ->
         when (result) {
@@ -206,8 +232,6 @@ fun BankDetailScreen(
             }
         }
     }
-
-    val isPlaidConnected = !item?.bank?.plaidItemId.isNullOrBlank()
 
     if (item == null) {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
@@ -281,6 +305,55 @@ fun BankDetailScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            if (restorableLoading) {
+                                Text(
+                                    "Checking for saved Plaid links…",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else if (restorableItems.isNotEmpty()) {
+                                Text(
+                                    "Saved links on the server — restore instead of connecting again (no new Trial slot).",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                restorableItems.forEach { link ->
+                                    OutlinedButton(
+                                        onClick = {
+                                            restoreBusyItemId = link.itemId
+                                            vm.restorePlaidLink(bankId, link.itemId) { result ->
+                                                restoreBusyItemId = null
+                                                result.onSuccess { sync ->
+                                                    plaidStatusMessage = buildString {
+                                                        append("Restored ${link.institutionName}.\n\n")
+                                                        append("Synced ${sync.accountsImported} account(s)")
+                                                        append(" and ${sync.transactionsAdded} transaction(s).")
+                                                    }
+                                                }.onFailure { e ->
+                                                    plaidStatusMessage = e.message ?: "Could not restore link"
+                                                }
+                                            }
+                                        },
+                                        enabled = restoreBusyItemId == null && !plaidLinkBusy,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            if (restoreBusyItemId == link.itemId) {
+                                                "Restoring…"
+                                            } else {
+                                                "Restore ${link.institutionName}"
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                            matchingRestore?.let {
+                                Text(
+                                    "Connect is disabled — a saved link for ${it.institutionName} is available above.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
                         }
                         Button(
                             onClick = {
@@ -294,7 +367,10 @@ fun BankDetailScreen(
                                     }
                                 }
                             },
-                            enabled = !plaidConnectPending && !plaidLinkBusy,
+                            enabled = !plaidConnectPending &&
+                                !plaidLinkBusy &&
+                                matchingRestore == null &&
+                                restoreBusyItemId == null,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
@@ -537,22 +613,41 @@ private fun PlaidTransactionRow(tx: PlaidTransactionEntity) {
 }
 
 @Composable
-private fun AddBankDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+private fun AddBankDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String, (String) -> Unit) -> Unit
+) {
     var name by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add bank") },
         text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text("Bank name") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = {
+                        name = it
+                        error = null
+                    },
+                    label = { Text("Bank name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                error?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(name) }, enabled = name.isNotBlank()) {
+            Button(
+                onClick = { onConfirm(name) { message -> error = message } },
+                enabled = name.isNotBlank()
+            ) {
                 Text("Add")
             }
         },
