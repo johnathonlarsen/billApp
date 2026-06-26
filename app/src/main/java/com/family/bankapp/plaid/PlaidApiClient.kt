@@ -21,11 +21,19 @@ data class PlaidExchangeResult(
 /** Calls Supabase Edge Functions — Plaid secrets and access tokens stay server-side. */
 object PlaidApiClient {
 
-    suspend fun createLinkToken(replacingItemId: String? = null): Result<PlaidLinkTokenResult> =
+    private fun JSONObject.putLinkedItemIds(linkedItemIds: List<String>) {
+        put("linked_item_ids", JSONArray(linkedItemIds))
+    }
+
+    suspend fun createLinkToken(
+        replacingItemId: String? = null,
+        linkedItemIds: List<String> = emptyList()
+    ): Result<PlaidLinkTokenResult> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val body = JSONObject().apply {
                     put("team_id", FamilyAppConfig.SUPABASE_TEAM_ID)
+                    putLinkedItemIds(linkedItemIds)
                     replacingItemId?.let { put("replacing_item_id", it) }
                 }
                 val json = postFunction("plaid-link-token", body)
@@ -38,12 +46,14 @@ object PlaidApiClient {
 
     suspend fun exchangePublicToken(
         publicToken: String,
-        replacingItemId: String? = null
+        replacingItemId: String? = null,
+        linkedItemIds: List<String> = emptyList()
     ): Result<PlaidExchangeResult> = withContext(Dispatchers.IO) {
         runCatching {
             val body = JSONObject().apply {
                 put("public_token", publicToken)
                 put("team_id", FamilyAppConfig.SUPABASE_TEAM_ID)
+                putLinkedItemIds(linkedItemIds)
                 replacingItemId?.let { put("replacing_item_id", it) }
             }
             val json = postFunction("plaid-exchange", body)

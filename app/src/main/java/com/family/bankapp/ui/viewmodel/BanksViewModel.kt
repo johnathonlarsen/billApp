@@ -77,20 +77,28 @@ class BanksViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            val matchingRestore = findMatchingRestorableItem(bank.name)
-            if (matchingRestore != null) {
+            val unrestored = filterUnclaimedRestorableItems(
+                PlaidApiClient.listRestorableItems().getOrElse {
+                    onResult(baseCheck)
+                    return@launch
+                }
+            )
+            if (unrestored.isNotEmpty()) {
+                val names = unrestored.joinToString { it.institutionName }
                 onResult(
                     baseCheck.copy(
                         allowed = false,
                         blockReason = buildString {
-                            append("A saved Plaid link for ${matchingRestore.institutionName} already exists.\n\n")
-                            append("Tap Restore saved link instead — no new Trial slot needed.")
+                            append("Saved Plaid link(s) on the server are not restored on this phone yet")
+                            append(" ($names).\n\n")
+                            append("Restore them first — Connect is blocked so you do not burn a Trial slot.")
                         }
                     )
                 )
-            } else {
-                onResult(baseCheck)
+                return@launch
             }
+
+            onResult(baseCheck)
         }
     }
 
@@ -155,19 +163,17 @@ class BanksViewModel(application: Application) : AndroidViewModel(application) {
         return items.filter { it.itemId !in linkedIds }
     }
 
-    private suspend fun findMatchingRestorableItem(bankName: String): PlaidRestorableItem? {
-        val items = PlaidApiClient.listRestorableItems().getOrNull() ?: return null
-        return filterUnclaimedRestorableItems(items)
-            .firstOrNull { PlaidNameMatcher.likelySameBank(bankName, it.institutionName) }
-    }
-
     fun preparePlaidLink(
         bank: BankEntity,
         onReady: (PlaidHandler) -> Unit,
         onError: (String) -> Unit
     ) {
         viewModelScope.launch {
-            PlaidApiClient.createLinkToken(bank.plaidItemId)
+            val linkedItemIds = repository.getLocalPlaidItemIds()
+            PlaidApiClient.createLinkToken(
+                replacingItemId = bank.plaidItemId,
+                linkedItemIds = linkedItemIds
+            )
                 .onSuccess { result ->
                     val config = LinkTokenConfiguration.Builder()
                         .token(result.linkToken)
@@ -188,7 +194,12 @@ class BanksViewModel(application: Application) : AndroidViewModel(application) {
         onResult: (Result<PlaidBankSyncResult>) -> Unit
     ) {
         viewModelScope.launch {
-            PlaidApiClient.exchangePublicToken(publicToken, replacingItemId)
+            val linkedItemIds = repository.getLocalPlaidItemIds()
+            PlaidApiClient.exchangePublicToken(
+                publicToken = publicToken,
+                replacingItemId = replacingItemId,
+                linkedItemIds = linkedItemIds
+            )
                 .onSuccess { result ->
                     repository.getBankByPlaidItemId(result.itemId)?.let { existing ->
                         if (existing.id != bankId) {

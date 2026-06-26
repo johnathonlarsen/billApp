@@ -183,6 +183,7 @@ fun BankDetailScreen(
     val plaidTransactions by vm.observePlaidTransactions(bankId).collectAsState(initial = emptyList())
 
     val isPlaidConnected = !item?.bank?.plaidItemId.isNullOrBlank()
+    val hasUnrestoredLinks = restorableItems.isNotEmpty()
     val matchingRestore = remember(item?.bank?.name, restorableItems) {
         val bankName = item?.bank?.name ?: return@remember null
         restorableItems.firstOrNull { PlaidNameMatcher.likelySameBank(bankName, it.institutionName) }
@@ -347,12 +348,21 @@ fun BankDetailScreen(
                                     }
                                 }
                             }
-                            matchingRestore?.let {
-                                Text(
-                                    "Connect is disabled — a saved link for ${it.institutionName} is available above.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error
-                                )
+                            when {
+                                matchingRestore != null -> {
+                                    Text(
+                                        "Start with Restore ${matchingRestore.institutionName} on this bank.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                hasUnrestoredLinks -> {
+                                    Text(
+                                        "Connect is disabled until all saved links above are restored on this phone.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
                             }
                         }
                         Button(
@@ -369,7 +379,7 @@ fun BankDetailScreen(
                             },
                             enabled = !plaidConnectPending &&
                                 !plaidLinkBusy &&
-                                matchingRestore == null &&
+                                !hasUnrestoredLinks &&
                                 restoreBusyItemId == null,
                             modifier = Modifier.fillMaxWidth()
                         ) {

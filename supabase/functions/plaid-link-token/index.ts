@@ -1,6 +1,7 @@
 import { verifyAppRequest } from '../_shared/auth.ts';
 import { corsHeaders, errorResponse, jsonResponse, readJson } from '../_shared/http.ts';
 import { CountryCode, createPlaidClient, getAndroidPackage, getTeamId, Products } from '../_shared/plaid.ts';
+import { getOrphanConnectBlock, parseLinkedItemIds } from '../_shared/plaid-connect-guard.ts';
 import { getPlaidUsage } from '../_shared/supabase.ts';
 
 Deno.serve(async (req) => {
@@ -16,9 +17,19 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const body = await readJson<{ replacing_item_id?: string; team_id?: string }>(req);
+    const body = await readJson<{
+      replacing_item_id?: string;
+      team_id?: string;
+      linked_item_ids?: unknown;
+    }>(req);
     const teamId = getTeamId(body.team_id);
     const replacing = body.replacing_item_id?.trim();
+    const linkedItemIds = parseLinkedItemIds(body.linked_item_ids);
+
+    const orphanBlock = await getOrphanConnectBlock(teamId, linkedItemIds, replacing);
+    if (orphanBlock) {
+      return errorResponse(409, orphanBlock.error, { orphans: orphanBlock.orphans });
+    }
 
     const usage = await getPlaidUsage(teamId);
     if (usage.at_limit && !replacing) {
