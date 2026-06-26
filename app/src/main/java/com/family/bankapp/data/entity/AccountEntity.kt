@@ -24,6 +24,8 @@ data class AccountEntity(
     val name: String,
     val accountType: AccountType,
     val balanceCents: Long,
+    /** Set when imported from Plaid /accounts/get. */
+    val plaidAccountId: String? = null,
     val lastUpdatedAt: Long = System.currentTimeMillis(),
     val notes: String = ""
 )

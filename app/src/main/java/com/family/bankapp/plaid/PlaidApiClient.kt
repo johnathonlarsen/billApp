@@ -53,7 +53,30 @@ object PlaidApiClient {
         }
     }
 
-    private fun postFunction(functionName: String, body: JSONObject): JSONObject {
+    suspend fun syncAccounts(itemId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
+        runCatching {
+            postFunction(
+                "plaid-accounts-sync",
+                JSONObject().put("team_id", FamilyAppConfig.SUPABASE_TEAM_ID).put("item_id", itemId)
+            )
+        }
+    }
+
+    suspend fun syncTransactions(itemId: String, cursor: String? = null): Result<JSONObject> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                postFunction(
+                    "plaid-transactions-sync",
+                    JSONObject().apply {
+                        put("team_id", FamilyAppConfig.SUPABASE_TEAM_ID)
+                        put("item_id", itemId)
+                        cursor?.let { put("cursor", it) }
+                    }
+                )
+            }
+        }
+
+    fun postFunction(functionName: String, body: JSONObject): JSONObject {
         val base = FamilyAppConfig.SUPABASE_URL.trim().removeSuffix("/")
         val conn = (URL("$base/functions/v1/$functionName").openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"

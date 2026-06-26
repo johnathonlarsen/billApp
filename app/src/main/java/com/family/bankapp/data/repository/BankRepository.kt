@@ -8,7 +8,12 @@ import com.family.bankapp.data.entity.AccountEntity
 import com.family.bankapp.data.entity.BankEntity
 import com.family.bankapp.data.entity.BillEntity
 import com.family.bankapp.data.entity.PaymentRecordEntity
+import com.family.bankapp.data.dao.PlaidTransactionDao
+import com.family.bankapp.data.entity.PlaidTransactionEntity
 import com.family.bankapp.data.model.ConnectionType
+import com.family.bankapp.plaid.PlaidAccountSnapshot
+import com.family.bankapp.plaid.PlaidTransactionSnapshot
+import com.family.bankapp.plaid.mapPlaidAccountType
 import com.family.bankapp.util.BillSchedule
 import java.time.LocalDate
 import kotlinx.coroutines.flow.Flow
@@ -18,7 +23,8 @@ class BankRepository(
     private val bankDao: BankDao,
     private val accountDao: AccountDao,
     private val billDao: BillDao,
-    private val paymentRecordDao: PaymentRecordDao
+    private val paymentRecordDao: PaymentRecordDao,
+    private val plaidTransactionDao: PlaidTransactionDao
 ) {
     companion object {
         const val MAX_BANKS = 3
@@ -30,6 +36,8 @@ class BankRepository(
     suspend fun getPlaidConnectedCount(): Int = bankDao.getPlaidConnectedCount()
     fun observeAccounts(): Flow<List<AccountEntity>> = accountDao.observeAll()
     fun observeAccountsByBank(bankId: Long): Flow<List<AccountEntity>> = accountDao.observeByBank(bankId)
+    fun observePlaidTransactionsByBank(bankId: Long, limit: Int = 50): Flow<List<PlaidTransactionEntity>> =
+        plaidTransactionDao.observeByBank(bankId, limit)
     fun observeActiveBills(): Flow<List<BillEntity>> = billDao.observeActive()
     fun observePaymentHistory(billId: Long): Flow<List<PaymentRecordEntity>> =
         paymentRecordDao.observeByBill(billId)
@@ -95,6 +103,79 @@ class BankRepository(
             )
         )
     }
+
+    suspend fun upsertPlaidAccounts(bankId: Long, snapshots: List<PlaidAccountSnapshot>): Int {
+        var count = 0
+        val now = System.currentTimeMillis()
+        snapshots.forEach { snapshot ->
+            val existing = accountDao.getByPlaidAccountId(bankId, snapshot.accountId)
+            if (existing != null) {
+                accountDao.update(
+                    existing.copy(
+                        name = snapshot.name,
+                        accountType = mapPlaidAccountType(snapshot.subtype, snapshot.type),
+                        balanceCents = snapshot.balanceCents,
+                        lastUpdatedAt = now
+                    )
+                )
+            } else {
+                accountDao.insert(
+                    AccountEntity(
+                        bankId = bankId,
+                        name = snapshot.name,
+                        accountType = mapPlaidAccountType(snapshot.subtype, snapshot.type),
+                        balanceCents = snapshot.balanceCents,
+                        plaidAccountId = snapshot.accountId,
+                        lastUpdatedAt = now
+                    )
+                )
+            }
+            count++
+        }
+        val bank = bankDao.getById(bankId) ?: return count
+        bankDao.update(bank.copy(lastSyncedAt = now))
+        return count
+    }
+
+    suspend fun applyPlaidTransactions(
+        bankId: Long,
+        added: List<PlaidTransactionSnapshot>,
+        removedIds: List<String>,
+        nextCursor: String?
+    ): Int {
+        val now = System.currentTimeMillis()
+        if (removedIds.isNotEmpty()) {
+            plaidTransactionDao.deleteByPlaidIds(removedIds)
+        }
+        if (added.isNotEmpty()) {
+            plaidTransactionDao.upsertAll(
+                added.map { tx ->
+                    PlaidTransactionEntity(
+                        plaidTransactionId = tx.transactionId,
+                        bankId = bankId,
+                        plaidAccountId = tx.accountId,
+                        amountCents = tx.amountCents,
+                        date = tx.date,
+                        name = tx.name,
+                        merchantName = tx.merchantName,
+                        pending = tx.pending,
+                        syncedAt = now
+                    )
+                }
+            )
+        }
+        val bank = bankDao.getById(bankId) ?: return added.size
+        bankDao.update(
+            bank.copy(
+                plaidTransactionsCursor = nextCursor,
+                lastSyncedAt = now
+            )
+        )
+        return added.size
+    }
+
+    suspend fun getPlaidTransactionsCursor(bankId: Long): String? =
+        bankDao.getById(bankId)?.plaidTransactionsCursor
 
     suspend fun syncBankBalances(bankId: Long, accountUpdates: Map<Long, Long>) {
         accountUpdates.forEach { (accountId, balanceCents) ->

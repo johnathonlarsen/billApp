@@ -50,6 +50,12 @@ interface AccountDao {
     @Query("SELECT * FROM accounts WHERE bankId = :bankId ORDER BY name ASC")
     fun observeByBank(bankId: Long): Flow<List<AccountEntity>>
 
+    @Query("SELECT * FROM accounts WHERE bankId = :bankId ORDER BY name ASC")
+    suspend fun getByBankSync(bankId: Long): List<AccountEntity>
+
+    @Query("SELECT * FROM accounts WHERE bankId = :bankId AND plaidAccountId = :plaidAccountId LIMIT 1")
+    suspend fun getByPlaidAccountId(bankId: Long, plaidAccountId: String): AccountEntity?
+
     @Query("SELECT * FROM accounts WHERE id = :id")
     suspend fun getById(id: Long): AccountEntity?
 
@@ -109,4 +115,18 @@ interface PaymentRecordDao {
 
     @Delete
     suspend fun delete(record: PaymentRecordEntity)
+}
+
+@Dao
+interface PlaidTransactionDao {
+    @Query(
+        "SELECT * FROM plaid_transactions WHERE bankId = :bankId ORDER BY date DESC, plaidTransactionId DESC LIMIT :limit"
+    )
+    fun observeByBank(bankId: Long, limit: Int = 50): Flow<List<com.family.bankapp.data.entity.PlaidTransactionEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(transactions: List<com.family.bankapp.data.entity.PlaidTransactionEntity>)
+
+    @Query("DELETE FROM plaid_transactions WHERE plaidTransactionId IN (:ids)")
+    suspend fun deleteByPlaidIds(ids: List<String>)
 }

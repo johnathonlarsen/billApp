@@ -44,7 +44,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.family.bankapp.data.entity.PlaidTransactionEntity
 import com.family.bankapp.data.model.AccountType
+import com.family.bankapp.util.MoneyFormatter
 import com.family.bankapp.data.repository.BankRepository
 import com.family.bankapp.ui.components.PlaidUsageTrackerCard
 import com.family.bankapp.ui.components.SectionHeader
@@ -167,7 +169,10 @@ fun BankDetailScreen(
     var plaidConfirmMessage by remember { mutableStateOf<String?>(null) }
     var plaidConnectPending by remember { mutableStateOf(false) }
     var plaidLinkBusy by remember { mutableStateOf(false) }
+    var plaidSyncBusy by remember { mutableStateOf(false) }
     var plaidStatusMessage by remember { mutableStateOf<String?>(null) }
+
+    val plaidTransactions by vm.observePlaidTransactions(bankId).collectAsState(initial = emptyList())
 
     val plaidLauncher = rememberLauncherForActivityResult(FastOpenPlaidLink()) { result ->
         when (result) {
@@ -180,8 +185,15 @@ fun BankDetailScreen(
                     replacingItemId = replacingItemId
                 ) { linkResult ->
                     plaidLinkBusy = false
-                    linkResult.onSuccess {
-                        plaidStatusMessage = "${item?.bank?.name ?: "Bank"} connected via Plaid."
+                    linkResult.onSuccess { sync ->
+                        plaidStatusMessage = buildString {
+                            append("${item?.bank?.name ?: "Bank"} connected via Plaid.\n\n")
+                            append("Imported ${sync.accountsImported} account(s)")
+                            append(" and ${sync.transactionsAdded} transaction(s).")
+                            if (sync.hasMoreTransactions) {
+                                append("\n\nMore transactions available — tap Sync from Plaid again.")
+                            }
+                        }
                     }.onFailure { e ->
                         plaidStatusMessage = e.message ?: "Could not save Plaid connection"
                     }
@@ -236,10 +248,33 @@ fun BankDetailScreen(
                         Text("Plaid connection", fontWeight = FontWeight.Bold)
                         if (isPlaidConnected) {
                             Text(
-                                "Connected — transaction sync for bill payment tracking comes next.",
+                                "Connected — balances and transactions sync from Plaid Sandbox.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
+                            OutlinedButton(
+                                onClick = {
+                                    plaidSyncBusy = true
+                                    vm.syncPlaidBank(bankId) { result ->
+                                        plaidSyncBusy = false
+                                        result.onSuccess { sync ->
+                                            plaidStatusMessage = buildString {
+                                                append("Synced ${sync.accountsImported} account(s)")
+                                                append(" and ${sync.transactionsAdded} new transaction(s).")
+                                                if (sync.hasMoreTransactions) {
+                                                    append("\n\nMore pages available — sync again if needed.")
+                                                }
+                                            }
+                                        }.onFailure { e ->
+                                            plaidStatusMessage = e.message ?: "Sync failed"
+                                        }
+                                    }
+                                },
+                                enabled = !plaidSyncBusy && !plaidLinkBusy,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(if (plaidSyncBusy) "Syncing…" else "Sync from Plaid")
+                            }
                         } else {
                             Text(
                                 "Optional. Connect only when ready — each bank uses one of your 10 lifetime Trial slots.",
@@ -286,8 +321,12 @@ fun BankDetailScreen(
 
             item {
                 Text(
-                    "Accounts here are labels only — used when linking bills to “pay from” this bank.",
-                    modifier = Modifier.padding(16.dp),
+                    if (isPlaidConnected) {
+                        "Plaid accounts show live Sandbox balances. Manual accounts are labels only."
+                    } else {
+                        "Add checking, savings, or credit accounts you pay bills from."
+                    },
+                    modifier = Modifier.padding(horizontal = 16.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -298,7 +337,11 @@ fun BankDetailScreen(
             if (item.accounts.isEmpty()) {
                 item {
                     Text(
-                        "Add checking, savings, or credit accounts you pay bills from.",
+                        if (isPlaidConnected) {
+                            "Tap Sync from Plaid to import Sandbox accounts."
+                        } else {
+                            "No accounts yet."
+                        },
                         modifier = Modifier.padding(horizontal = 16.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -322,6 +365,18 @@ fun BankDetailScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            Text(
+                                MoneyFormatter.format(account.balanceCents),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                            if (!account.plaidAccountId.isNullOrBlank()) {
+                                Text(
+                                    "From Plaid",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                             if (account.notes.isNotBlank()) {
                                 Text(
                                     account.notes,
@@ -333,6 +388,23 @@ fun BankDetailScreen(
                         IconButton(onClick = { editingAccount = account }) {
                             Icon(Icons.Default.Edit, contentDescription = "Edit")
                         }
+                    }
+                }
+            }
+
+            if (isPlaidConnected) {
+                item { SectionHeader("Recent transactions") }
+                if (plaidTransactions.isEmpty()) {
+                    item {
+                        Text(
+                            "No transactions yet — tap Sync from Plaid.",
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    items(plaidTransactions) { tx ->
+                        PlaidTransactionRow(tx)
                     }
                 }
             }
@@ -423,6 +495,44 @@ fun BankDetailScreen(
                 editingAccount = null
             }
         )
+    }
+}
+
+@Composable
+private fun PlaidTransactionRow(tx: PlaidTransactionEntity) {
+    val amountLabel = if (tx.amountCents >= 0) {
+        "-${MoneyFormatter.format(tx.amountCents)}"
+    } else {
+        "+${MoneyFormatter.format(-tx.amountCents)}"
+    }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+    ) {
+        Row(
+            Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(tx.name, fontWeight = FontWeight.SemiBold)
+                Text(
+                    tx.date + if (tx.pending) " · pending" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                amountLabel,
+                fontWeight = FontWeight.Medium,
+                color = if (tx.amountCents >= 0) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.primary
+                }
+            )
+        }
     }
 }
 

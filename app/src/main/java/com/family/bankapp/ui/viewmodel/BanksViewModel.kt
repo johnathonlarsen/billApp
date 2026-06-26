@@ -11,6 +11,8 @@ import com.family.bankapp.data.model.AccountType
 import com.family.bankapp.plaid.PlaidApiClient
 import com.family.bankapp.plaid.PlaidConnectCheck
 import com.family.bankapp.plaid.PlaidLimitGuard
+import com.family.bankapp.plaid.PlaidBankSyncResult
+import com.family.bankapp.plaid.PlaidSyncClient
 import com.family.bankapp.sync.SupabaseSharedStateClient
 import com.plaid.link.Plaid
 import com.plaid.link.PlaidHandler
@@ -19,6 +21,7 @@ import com.family.bankapp.util.BankColors
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -96,17 +99,33 @@ class BanksViewModel(application: Application) : AndroidViewModel(application) {
         bankId: Long,
         publicToken: String,
         replacingItemId: String?,
-        onResult: (Result<Unit>) -> Unit
+        onResult: (Result<PlaidBankSyncResult>) -> Unit
     ) {
         viewModelScope.launch {
             PlaidApiClient.exchangePublicToken(publicToken, replacingItemId)
                 .onSuccess { result ->
                     repository.savePlaidConnection(bankId, result.itemId)
-                    onResult(Result.success(Unit))
+                    PlaidSyncClient.syncBank(repository, bankId, result.itemId, resetTransactionCursor = true)
+                        .onSuccess { sync -> onResult(Result.success(sync)) }
+                        .onFailure { e -> onResult(Result.failure(e)) }
                 }
                 .onFailure { e ->
                     onResult(Result.failure(e))
                 }
+        }
+    }
+
+    fun syncPlaidBank(bankId: Long, onResult: (Result<PlaidBankSyncResult>) -> Unit) {
+        viewModelScope.launch {
+            val bank = repository.getBank(bankId)
+            val itemId = bank?.plaidItemId
+            if (itemId.isNullOrBlank()) {
+                onResult(Result.failure(IllegalStateException("Bank is not connected via Plaid")))
+                return@launch
+            }
+            PlaidSyncClient.syncBank(repository, bankId, itemId)
+                .onSuccess { onResult(Result.success(it)) }
+                .onFailure { e -> onResult(Result.failure(e)) }
         }
     }
 
@@ -136,4 +155,7 @@ class BanksViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteAccount(account: AccountEntity) {
         viewModelScope.launch { repository.deleteAccount(account) }
     }
+
+    fun observePlaidTransactions(bankId: Long): Flow<List<com.family.bankapp.data.entity.PlaidTransactionEntity>> =
+        repository.observePlaidTransactionsByBank(bankId)
 }
