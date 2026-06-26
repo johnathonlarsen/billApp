@@ -7,11 +7,8 @@ import com.family.bankapp.update.AppDownloadProgress
 import com.family.bankapp.update.AppUpdateClient
 import com.family.bankapp.update.AppUpdateInstaller
 import com.family.bankapp.update.AppUpdateManifest
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
@@ -22,7 +19,11 @@ sealed class AppUpdateUiState {
     data object UpToDate : AppUpdateUiState()
     data class Available(val manifest: AppUpdateManifest) : AppUpdateUiState()
     data class Downloading(val progress: AppDownloadProgress) : AppUpdateUiState()
-    data class ReadyToInstall(val manifest: AppUpdateManifest, val apkFile: File) : AppUpdateUiState()
+    data class ReadyToInstall(
+        val manifest: AppUpdateManifest,
+        val apkFile: File,
+        val installAttempt: Long
+    ) : AppUpdateUiState()
     data class Error(val message: String) : AppUpdateUiState()
 }
 
@@ -31,8 +32,7 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
     private val _state = MutableStateFlow<AppUpdateUiState>(AppUpdateUiState.Idle)
     val state: StateFlow<AppUpdateUiState> = _state.asStateFlow()
 
-    private val _launchInstall = MutableSharedFlow<File>(extraBufferCapacity = 1)
-    val launchInstall: SharedFlow<File> = _launchInstall.asSharedFlow()
+    private var nextInstallAttempt = 0L
 
     val currentVersionName: String
         get() = AppUpdateInstaller.currentVersionName(getApplication())
@@ -48,6 +48,10 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
             AppUpdateClient.fetchManifest()
                 .onSuccess { manifest ->
                     _state.value = if (manifest.versionCode > currentVersionCode) {
+                        AppUpdateInstaller.findCachedApk(getApplication(), manifest.versionCode)?.let { cached ->
+                            readyToInstall(manifest, cached)
+                            return@launch
+                        }
                         AppUpdateUiState.Available(manifest)
                     } else {
                         AppUpdateUiState.UpToDate
@@ -64,22 +68,45 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
     fun updateNow() {
         when (val current = _state.value) {
             is AppUpdateUiState.Available -> downloadAndInstall(current.manifest)
-            is AppUpdateUiState.ReadyToInstall -> requestInstall(current.apkFile, current.manifest)
+            is AppUpdateUiState.ReadyToInstall -> retryInstall(current)
             else -> Unit
         }
     }
 
-    private fun requestInstall(apkFile: File, manifest: AppUpdateManifest) {
-        _state.value = AppUpdateUiState.ReadyToInstall(manifest, apkFile)
-        _launchInstall.tryEmit(apkFile)
+    fun onInstallLaunchFailed(message: String) {
+        val ready = _state.value as? AppUpdateUiState.ReadyToInstall
+        _state.value = if (ready != null) {
+            ready
+        } else {
+            AppUpdateUiState.Error(message)
+        }
+    }
+
+    private fun readyToInstall(manifest: AppUpdateManifest, apkFile: File) {
+        nextInstallAttempt += 1
+        _state.value = AppUpdateUiState.ReadyToInstall(
+            manifest = manifest,
+            apkFile = apkFile,
+            installAttempt = nextInstallAttempt
+        )
+    }
+
+    private fun retryInstall(current: AppUpdateUiState.ReadyToInstall) {
+        nextInstallAttempt += 1
+        _state.value = current.copy(installAttempt = nextInstallAttempt)
     }
 
     private fun downloadAndInstall(manifest: AppUpdateManifest) {
         viewModelScope.launch {
+            val context = getApplication<Application>()
+            AppUpdateInstaller.findCachedApk(context, manifest.versionCode)?.let { cached ->
+                readyToInstall(manifest, cached)
+                return@launch
+            }
+
             _state.value = AppUpdateUiState.Downloading(
                 AppDownloadProgress(0, null)
             )
-            val context = getApplication<Application>()
             if (!AppUpdateInstaller.canInstallPackages(context)) {
                 _state.value = AppUpdateUiState.Error(
                     "Allow installs from this app in Settings, then tap Update now again."
@@ -91,9 +118,7 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
             AppUpdateInstaller.downloadApk(context, manifest) { progress ->
                 _state.value = AppUpdateUiState.Downloading(progress)
             }
-                .onSuccess { file ->
-                    requestInstall(file, manifest)
-                }
+                .onSuccess { file -> readyToInstall(manifest, file) }
                 .onFailure { e ->
                     _state.value = AppUpdateUiState.Error(e.message ?: "Download failed")
                 }

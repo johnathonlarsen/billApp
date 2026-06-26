@@ -44,6 +44,7 @@ import com.family.bankapp.data.model.BillRecurrence
 import com.family.bankapp.ui.viewmodel.BanksViewModel
 import com.family.bankapp.ui.components.EnumDropdownField
 import com.family.bankapp.ui.viewmodel.BillsViewModel
+import com.family.bankapp.ui.viewmodel.AppUpdateViewModel
 import com.family.bankapp.ui.viewmodel.SettingsViewModel
 import com.family.bankapp.util.MoneyFormatter
 import java.time.LocalDate
@@ -266,7 +267,8 @@ fun BillEditScreen(
 @Composable
 fun SettingsScreen(
     padding: PaddingValues,
-    onOpenPrivacyPolicy: () -> Unit = {}
+    onOpenPrivacyPolicy: () -> Unit = {},
+    updateVm: AppUpdateViewModel
 ) {
     val vm: SettingsViewModel = viewModel()
     val reminderDays by vm.defaultReminderDays.collectAsState()
@@ -313,7 +315,7 @@ fun SettingsScreen(
         }
 
         item {
-            AppUpdateSettingsCard()
+            AppUpdateSettingsCard(vm = updateVm)
         }
 
         item {

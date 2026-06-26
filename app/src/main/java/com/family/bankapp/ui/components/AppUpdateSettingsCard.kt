@@ -11,28 +11,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.family.bankapp.update.AppUpdateInstaller
 import com.family.bankapp.ui.viewmodel.AppUpdateUiState
 import com.family.bankapp.ui.viewmodel.AppUpdateViewModel
 
 @Composable
-fun AppUpdateSettingsCard(vm: AppUpdateViewModel = viewModel()) {
+fun AppUpdateSettingsCard(vm: AppUpdateViewModel) {
     val state by vm.state.collectAsState()
     val context = LocalContext.current
-
-    LaunchedEffect(vm) {
-        vm.launchInstall.collect { apkFile ->
-            AppUpdateInstaller.startInstall(context, apkFile)
-        }
-    }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -96,12 +88,12 @@ fun AppUpdateSettingsCard(vm: AppUpdateViewModel = viewModel()) {
 
                 is AppUpdateUiState.ReadyToInstall -> {
                     Text(
-                        "Update downloaded: version ${s.manifest.versionName}",
+                        "Ready to install version ${s.manifest.versionName}",
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        "If the installer did not open, tap Open installer below.",
+                        "The Android installer should open automatically. If it does not, tap Open installer.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

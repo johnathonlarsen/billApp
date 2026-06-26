@@ -1,5 +1,6 @@
 package com.family.bankapp.ui.navigation
 
+import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
@@ -12,8 +13,18 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.family.bankapp.update.AppUpdateInstaller
+import com.family.bankapp.ui.viewmodel.AppUpdateUiState
+import com.family.bankapp.ui.viewmodel.AppUpdateViewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -28,6 +39,16 @@ import com.family.bankapp.ui.screens.BanksScreen
 import com.family.bankapp.ui.screens.DashboardScreen
 import com.family.bankapp.ui.screens.PrivacyPolicyScreen
 import com.family.bankapp.ui.screens.SettingsScreen
+import android.content.Context
+import android.content.ContextWrapper
+
+private tailrec fun Context.findComponentActivity(): ComponentActivity {
+    when (this) {
+        is ComponentActivity -> return this
+        is ContextWrapper -> return baseContext.findComponentActivity()
+        else -> error("Activity not found")
+    }
+}
 
 sealed class Screen(val route: String, val label: String) {
     data object Dashboard : Screen("dashboard", "Home")
@@ -52,6 +73,26 @@ private val bottomTabs = listOf(
 
 @Composable
 fun BankAppNavHost() {
+    val context = LocalContext.current
+    val activity = remember(context) { context.findComponentActivity() }
+    val updateVm: AppUpdateViewModel = viewModel(activity)
+    val updateState by updateVm.state.collectAsState()
+
+    var lastAutoInstallAttempt by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(updateState) {
+        val ready = updateState as? AppUpdateUiState.ReadyToInstall ?: return@LaunchedEffect
+        if (ready.installAttempt == lastAutoInstallAttempt) return@LaunchedEffect
+        lastAutoInstallAttempt = ready.installAttempt
+        kotlinx.coroutines.delay(350)
+        AppUpdateInstaller.startInstall(context, ready.apkFile)
+            .onFailure { error ->
+                updateVm.onInstallLaunchFailed(
+                    error.message ?: "Could not open installer — tap Open installer"
+                )
+            }
+    }
+
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
@@ -132,7 +173,8 @@ fun BankAppNavHost() {
             composable(Screen.Settings.route) {
                 SettingsScreen(
                     padding = androidx.compose.foundation.layout.PaddingValues(),
-                    onOpenPrivacyPolicy = { navController.navigate(Screen.PrivacyPolicy.route) }
+                    onOpenPrivacyPolicy = { navController.navigate(Screen.PrivacyPolicy.route) },
+                    updateVm = updateVm
                 )
             }
             composable(Screen.PrivacyPolicy.route) {
