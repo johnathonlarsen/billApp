@@ -1,0 +1,5 @@
+name,amount,due_day,category,recurrence,pay_from,reminder_days,notes
+Mortgage,1850.00,1,Housing,Monthly,Capital One · 360 Checking,5,
+Electric,145.00,12,Utilities,Monthly,Keesler FCU · Primary Checking,3,
+Internet,79.99,18,Utilities,Monthly,,2,
+Car insurance,92.00,5,Insurance,Monthly,Hancock Whitney · Checking,7,
