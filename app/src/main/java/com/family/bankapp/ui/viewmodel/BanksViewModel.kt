@@ -116,43 +116,47 @@ class BanksViewModel(application: Application) : AndroidViewModel(application) {
         onResult: (Result<PlaidBankSyncResult>) -> Unit
     ) {
         viewModelScope.launch {
-            val bank = repository.getBank(bankId)
-                ?: return@launch onResult(Result.failure(IllegalStateException("Bank not found")))
+            try {
+                val bank = repository.getBank(bankId)
+                    ?: return@launch onResult(Result.failure(IllegalStateException("Bank not found")))
 
-            if (!bank.plaidItemId.isNullOrBlank()) {
-                onResult(Result.failure(IllegalStateException("This bank is already connected via Plaid")))
-                return@launch
-            }
+                if (!bank.plaidItemId.isNullOrBlank()) {
+                    onResult(Result.failure(IllegalStateException("This bank is already connected via Plaid")))
+                    return@launch
+                }
 
-            repository.getBankByPlaidItemId(itemId)?.let { existing ->
-                onResult(
-                    Result.failure(
-                        IllegalStateException("That link is already assigned to ${existing.name}")
+                repository.getBankByPlaidItemId(itemId)?.let { existing ->
+                    onResult(
+                        Result.failure(
+                            IllegalStateException("That link is already assigned to ${existing.name}")
+                        )
                     )
+                    return@launch
+                }
+
+                val restorable = filterUnclaimedRestorableItems(
+                    PlaidApiClient.listRestorableItems().getOrElse { e ->
+                        onResult(Result.failure(e))
+                        return@launch
+                    }
                 )
-                return@launch
-            }
-
-            val restorable = filterUnclaimedRestorableItems(
-                PlaidApiClient.listRestorableItems().getOrElse { e ->
-                    onResult(Result.failure(e))
-                    return@launch
-                }
-            )
-            if (restorable.none { it.itemId == itemId }) {
-                onResult(Result.failure(IllegalStateException("Saved Plaid link not found or already in use")))
-                return@launch
-            }
-
-            runCatching { repository.savePlaidConnection(bankId, itemId) }
-                .onFailure { e ->
-                    onResult(Result.failure(e))
+                if (restorable.none { it.itemId == itemId }) {
+                    onResult(Result.failure(IllegalStateException("Saved Plaid link not found or already in use")))
                     return@launch
                 }
 
-            PlaidSyncClient.syncBank(repository, bankId, itemId, resetTransactionCursor = false)
-                .onSuccess { onResult(Result.success(it)) }
-                .onFailure { e -> onResult(Result.failure(e)) }
+                runCatching { repository.savePlaidConnection(bankId, itemId) }
+                    .onFailure { e ->
+                        onResult(Result.failure(e))
+                        return@launch
+                    }
+
+                PlaidSyncClient.syncBank(repository, bankId, itemId, resetTransactionCursor = false)
+                    .onSuccess { onResult(Result.success(it)) }
+                    .onFailure { e -> onResult(Result.failure(e)) }
+            } finally {
+                app.requestPlaidUsageRefresh()
+            }
         }
     }
 
@@ -194,47 +198,51 @@ class BanksViewModel(application: Application) : AndroidViewModel(application) {
         onResult: (Result<PlaidBankSyncResult>) -> Unit
     ) {
         viewModelScope.launch {
-            val linkedItemIds = repository.getLocalPlaidItemIds()
-            PlaidApiClient.exchangePublicToken(
-                publicToken = publicToken,
-                replacingItemId = replacingItemId,
-                linkedItemIds = linkedItemIds
-            )
-                .onSuccess { result ->
-                    repository.getBankByPlaidItemId(result.itemId)?.let { existing ->
-                        if (existing.id != bankId) {
-                            onResult(
-                                Result.failure(
+            try {
+                val linkedItemIds = repository.getLocalPlaidItemIds()
+                val result = PlaidApiClient.exchangePublicToken(
+                    publicToken = publicToken,
+                    replacingItemId = replacingItemId,
+                    linkedItemIds = linkedItemIds
+                ).fold(
+                    onSuccess = { exchange ->
+                        repository.getBankByPlaidItemId(exchange.itemId)?.let { existing ->
+                            if (existing.id != bankId) {
+                                return@fold Result.failure<PlaidBankSyncResult>(
                                     IllegalStateException(
-                                        "This Plaid login is already linked to ${existing.name}. Use Restore saved link on that bank instead."
+                                        "This Plaid login is already linked to ${existing.name}. " +
+                                            "Use Restore saved link on that bank instead."
                                     )
                                 )
-                            )
-                            return@launch
+                            }
                         }
-                    }
-                    repository.savePlaidConnection(bankId, result.itemId)
-                    PlaidSyncClient.syncBank(repository, bankId, result.itemId, resetTransactionCursor = true)
-                        .onSuccess { sync -> onResult(Result.success(sync)) }
-                        .onFailure { e -> onResult(Result.failure(e)) }
-                }
-                .onFailure { e ->
-                    onResult(Result.failure(e))
-                }
+                        repository.savePlaidConnection(bankId, exchange.itemId)
+                        PlaidSyncClient.syncBank(repository, bankId, exchange.itemId, resetTransactionCursor = true)
+                    },
+                    onFailure = { Result.failure(it) }
+                )
+                onResult(result)
+            } finally {
+                app.requestPlaidUsageRefresh()
+            }
         }
     }
 
     fun syncPlaidBank(bankId: Long, onResult: (Result<PlaidBankSyncResult>) -> Unit) {
         viewModelScope.launch {
-            val bank = repository.getBank(bankId)
-            val itemId = bank?.plaidItemId
-            if (itemId.isNullOrBlank()) {
-                onResult(Result.failure(IllegalStateException("Bank is not connected via Plaid")))
-                return@launch
+            try {
+                val bank = repository.getBank(bankId)
+                val itemId = bank?.plaidItemId
+                if (itemId.isNullOrBlank()) {
+                    onResult(Result.failure(IllegalStateException("Bank is not connected via Plaid")))
+                    return@launch
+                }
+                PlaidSyncClient.syncBank(repository, bankId, itemId)
+                    .onSuccess { onResult(Result.success(it)) }
+                    .onFailure { e -> onResult(Result.failure(e)) }
+            } finally {
+                app.requestPlaidUsageRefresh()
             }
-            PlaidSyncClient.syncBank(repository, bankId, itemId)
-                .onSuccess { onResult(Result.success(it)) }
-                .onFailure { e -> onResult(Result.failure(e)) }
         }
     }
 

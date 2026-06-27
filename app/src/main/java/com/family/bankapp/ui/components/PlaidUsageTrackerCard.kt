@@ -11,31 +11,34 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.family.bankapp.FamilyAppConfig
 import com.family.bankapp.plaid.PlaidApiBudget
 import com.family.bankapp.plaid.PlaidUsage
+import com.family.bankapp.ui.util.findComponentActivity
 import com.family.bankapp.ui.viewmodel.PlaidTrackerViewModel
 
 @Composable
 fun PlaidUsageTrackerCard(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
-    vm: PlaidTrackerViewModel = viewModel()
+    vm: PlaidTrackerViewModel? = null
 ) {
-    val itemUsage by vm.itemUsage.collectAsState()
-    val apiBudget by vm.apiBudget.collectAsState()
-    val error by vm.error.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val localCount by vm.localPlaidCount.collectAsState()
-
-    LaunchedEffect(Unit, localCount) { vm.refresh() }
+    val context = LocalContext.current
+    val activity = remember(context) { context.findComponentActivity() }
+    val trackerVm = vm ?: viewModel(activity)
+    val itemUsage by trackerVm.itemUsage.collectAsState()
+    val apiBudget by trackerVm.apiBudget.collectAsState()
+    val error by trackerVm.error.collectAsState()
+    val loading by trackerVm.loading.collectAsState()
+    val localCount by trackerVm.localPlaidCount.collectAsState()
 
     PlaidUsageTrackerContent(
         modifier = modifier,
@@ -45,7 +48,7 @@ fun PlaidUsageTrackerCard(
         localPlaidCount = localCount,
         error = error,
         loading = loading,
-        onRefresh = vm::refresh
+        onRefresh = trackerVm::refresh
     )
 }
 

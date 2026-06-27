@@ -17,7 +17,8 @@ import kotlinx.coroutines.launch
 
 /** Shared Plaid slot + API call counters from Supabase (both phones see the same numbers). */
 class PlaidTrackerViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository = (application as BankAppApplication).repository
+    private val app = application as BankAppApplication
+    private val repository = app.repository
 
     private val _itemUsage = MutableStateFlow<PlaidUsage?>(null)
     val itemUsage: StateFlow<PlaidUsage?> = _itemUsage.asStateFlow()
@@ -33,6 +34,13 @@ class PlaidTrackerViewModel(application: Application) : AndroidViewModel(applica
 
     val localPlaidCount = repository.observePlaidConnectedCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    init {
+        refresh()
+        viewModelScope.launch {
+            app.plaidUsageRefreshRequests.collect { refresh() }
+        }
+    }
 
     fun refresh() {
         viewModelScope.launch {

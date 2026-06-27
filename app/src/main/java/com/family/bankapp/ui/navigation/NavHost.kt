@@ -42,16 +42,7 @@ import com.family.bankapp.ui.screens.IncomeEditScreen
 import com.family.bankapp.ui.screens.IncomeScreen
 import com.family.bankapp.ui.screens.PrivacyPolicyScreen
 import com.family.bankapp.ui.screens.SettingsScreen
-import android.content.Context
-import android.content.ContextWrapper
-
-private tailrec fun Context.findComponentActivity(): ComponentActivity {
-    when (this) {
-        is ComponentActivity -> return this
-        is ContextWrapper -> return baseContext.findComponentActivity()
-        else -> error("Activity not found")
-    }
-}
+import com.family.bankapp.ui.util.findComponentActivity
 
 sealed class Screen(val route: String, val label: String) {
     data object Dashboard : Screen("dashboard", "Home")
