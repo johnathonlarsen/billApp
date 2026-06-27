@@ -15,8 +15,8 @@ android {
         applicationId = "com.family.bankapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 25
-        versionName = "1.4.2"
+        versionCode = 26
+        versionName = "1.5.0"
     }
 
     buildTypes {

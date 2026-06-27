@@ -317,7 +317,7 @@ fun BankDetailScreen(
                         Text("Plaid connection", fontWeight = FontWeight.Bold)
                         if (isPlaidConnected) {
                             Text(
-                                "Connected — balances and transactions sync from Plaid Sandbox.",
+                                "Connected — balances and transactions sync from your bank via Plaid.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -493,7 +493,7 @@ fun BankDetailScreen(
             item {
                 Text(
                     if (isPlaidConnected) {
-                        "Plaid accounts show live Sandbox balances. Manual accounts are labels only."
+                        "Plaid accounts show live balances. Manual accounts are labels only."
                     } else {
                         "Add checking, savings, or credit accounts you pay bills from."
                     },
@@ -509,7 +509,7 @@ fun BankDetailScreen(
                 item {
                     Text(
                         if (isPlaidConnected) {
-                            "Tap Sync from Plaid to import Sandbox accounts."
+                            "Tap Sync from Plaid to import accounts."
                         } else {
                             "No accounts yet."
                         },

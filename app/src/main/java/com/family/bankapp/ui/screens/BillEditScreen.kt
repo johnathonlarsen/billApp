@@ -480,10 +480,10 @@ fun SettingsScreen(
 private fun PlaidTrialSettingsCard() {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Plaid Sandbox", fontWeight = FontWeight.Bold)
+            Text("Plaid Production", fontWeight = FontWeight.Bold)
             Text(
-                "Safe testing with fake banks. ${FamilyAppConfig.PLAID_EXPECTED_ITEMS} household Items " +
-                    "(one login per institution). Production Trial slots are tracked above.",
+                "Live bank connections. ${FamilyAppConfig.PLAID_EXPECTED_ITEMS} household Items max " +
+                    "(one login per institution). Trial slots are tracked above — each new connection is permanent.",
                 style = MaterialTheme.typography.bodySmall
             )
             Text(

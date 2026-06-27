@@ -18,8 +18,8 @@ object FamilyAppConfig {
     /** First-run password on each device (not Supabase — just keeps casual users out). */
     const val APP_ACCESS_PASSWORD = "familybank"
 
-    /** Plaid Sandbox — use until Production Trial; unlimited Items in sandbox. */
-    const val PLAID_MODE = "sandbox"
+    /** Plaid Production Trial — server uses PLAID_ENV=production in Supabase secrets. */
+    const val PLAID_MODE = "production"
 
     /** Household Items (institution logins), not individual accounts. */
     const val PLAID_EXPECTED_ITEMS = 3
