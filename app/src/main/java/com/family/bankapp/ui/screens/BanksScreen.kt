@@ -49,15 +49,21 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.family.bankapp.FamilyAppConfig
 import com.family.bankapp.data.entity.PlaidTransactionEntity
 import com.family.bankapp.data.model.AccountType
+import com.family.bankapp.data.model.BillRecurrence
 import com.family.bankapp.util.MoneyFormatter
 import com.family.bankapp.data.repository.BankRepository
 import com.family.bankapp.plaid.PlaidNameMatcher
 import com.family.bankapp.plaid.PlaidRestorableItem
+import com.family.bankapp.ui.components.AddBillFromTransactionDialog
 import com.family.bankapp.ui.components.PlaidUsageTrackerCard
 import com.family.bankapp.ui.components.SectionHeader
 import com.family.bankapp.ui.components.parseColorHex
+import com.family.bankapp.plaid.canAddAsBill
+import com.family.bankapp.ui.viewmodel.BillsViewModel
 import com.family.bankapp.ui.viewmodel.BankWithAccounts
 import com.family.bankapp.ui.viewmodel.BanksViewModel
+import java.time.LocalDate
+import java.time.ZoneId
 import com.plaid.link.FastOpenPlaidLink
 import com.plaid.link.result.LinkExit
 import com.plaid.link.result.LinkSuccess
@@ -167,6 +173,7 @@ fun BankDetailScreen(
     onBack: () -> Unit
 ) {
     val vm: BanksViewModel = viewModel()
+    val billsVm: BillsViewModel = viewModel()
     val banks by vm.banksWithAccounts.collectAsState()
     val item = banks.find { it.bank.id == bankId }
 
@@ -184,6 +191,13 @@ fun BankDetailScreen(
     var showReconnectPasswordDialog by remember { mutableStateOf(false) }
     var reconnectPassword by remember { mutableStateOf("") }
     var reconnectPasswordError by remember { mutableStateOf<String?>(null) }
+    var billFromTransaction by remember { mutableStateOf<PlaidTransactionEntity?>(null) }
+
+    val accountOptions = remember(banks) {
+        banks.flatMap { bwa ->
+            bwa.accounts.map { acc -> "${bwa.bank.name} · ${acc.name}" to acc.id }
+        }
+    }
 
     fun beginPlaidConnect() {
         plaidConnectPending = true
@@ -504,11 +518,53 @@ fun BankDetailScreen(
                     }
                 } else {
                     items(plaidTransactions) { tx ->
-                        PlaidTransactionRow(tx)
+                        PlaidTransactionRow(
+                            tx = tx,
+                            onAddAsBill = if (tx.canAddAsBill()) {
+                                { billFromTransaction = tx }
+                            } else {
+                                null
+                            }
+                        )
                     }
                 }
             }
         }
+    }
+
+    billFromTransaction?.let { tx ->
+        AddBillFromTransactionDialog(
+            transaction = tx,
+            bankName = item.bank.name,
+            accounts = item.accounts,
+            accountOptions = accountOptions,
+            onDismiss = { billFromTransaction = null },
+            onConfirm = { draft ->
+                val txDate = runCatching { LocalDate.parse(tx.date) }.getOrNull()
+                val dueDateMillis = when (draft.recurrence) {
+                    BillRecurrence.ONE_TIME,
+                    BillRecurrence.WEEKLY,
+                    BillRecurrence.YEARLY -> txDate
+                        ?.atStartOfDay(ZoneId.systemDefault())
+                        ?.toInstant()
+                        ?.toEpochMilli()
+                    else -> null
+                }
+                billsVm.saveBill(
+                    name = draft.name,
+                    amountCents = draft.amountCents,
+                    recurrence = draft.recurrence,
+                    category = draft.category,
+                    dueDayOfMonth = draft.dueDayOfMonth,
+                    dueDateMillis = dueDateMillis,
+                    linkedAccountId = draft.linkedAccountId,
+                    reminderDaysBefore = draft.reminderDaysBefore,
+                    notes = draft.notes
+                )
+                billFromTransaction = null
+                plaidStatusMessage = "\"${draft.name}\" added to your bills."
+            }
+        )
     }
 
     plaidBlockMessage?.let { message ->
@@ -663,7 +719,10 @@ fun BankDetailScreen(
 }
 
 @Composable
-private fun PlaidTransactionRow(tx: PlaidTransactionEntity) {
+private fun PlaidTransactionRow(
+    tx: PlaidTransactionEntity,
+    onAddAsBill: (() -> Unit)? = null
+) {
     val amountLabel = if (tx.amountCents >= 0) {
         "-${MoneyFormatter.format(tx.amountCents)}"
     } else {
@@ -675,11 +734,11 @@ private fun PlaidTransactionRow(tx: PlaidTransactionEntity) {
             .padding(horizontal = 16.dp, vertical = 4.dp)
     ) {
         Row(
-            Modifier.padding(16.dp),
+            Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f).padding(start = 8.dp)) {
                 Text(tx.name, fontWeight = FontWeight.SemiBold)
                 Text(
                     tx.date + if (tx.pending) " · pending" else "",
@@ -696,6 +755,11 @@ private fun PlaidTransactionRow(tx: PlaidTransactionEntity) {
                     MaterialTheme.colorScheme.primary
                 }
             )
+            if (onAddAsBill != null) {
+                IconButton(onClick = onAddAsBill) {
+                    Icon(Icons.Default.Add, contentDescription = "Add as bill")
+                }
+            }
         }
     }
 }
