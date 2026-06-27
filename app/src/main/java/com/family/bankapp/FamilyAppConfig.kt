@@ -12,6 +12,9 @@ object FamilyAppConfig {
     /** Must match Supabase secret FAMILY_APP_API_SECRET (Edge Function auth). */
     const val EDGE_FUNCTION_SECRET = "familybank-edge"
 
+    /** Password required before Reconnect via Plaid (avoids accidental Trial slot use). */
+    const val PLAID_RECONNECT_PASSWORD = "65483324"
+
     /** First-run password on each device (not Supabase — just keeps casual users out). */
     const val APP_ACCESS_PASSWORD = "familybank"
 

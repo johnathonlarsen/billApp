@@ -45,6 +45,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import com.family.bankapp.FamilyAppConfig
 import com.family.bankapp.data.entity.PlaidTransactionEntity
 import com.family.bankapp.data.model.AccountType
 import com.family.bankapp.util.MoneyFormatter
@@ -179,9 +181,23 @@ fun BankDetailScreen(
     var restorableItems by remember { mutableStateOf<List<PlaidRestorableItem>>(emptyList()) }
     var restorableLoading by remember { mutableStateOf(false) }
     var restoreBusyItemId by remember { mutableStateOf<String?>(null) }
+    var showReconnectPasswordDialog by remember { mutableStateOf(false) }
+    var reconnectPassword by remember { mutableStateOf("") }
+    var reconnectPasswordError by remember { mutableStateOf<String?>(null) }
+
+    fun beginPlaidConnect() {
+        plaidConnectPending = true
+        vm.checkBeforePlaidConnect(item?.bank ?: return) { check ->
+            plaidConnectPending = false
+            if (!check.allowed) {
+                plaidBlockMessage = check.blockReason
+            } else {
+                plaidConfirmMessage = check.confirmMessage
+            }
+        }
+    }
 
     val plaidTransactions by vm.observePlaidTransactions(bankId).collectAsState(initial = emptyList())
-
     val isPlaidConnected = !item?.bank?.plaidItemId.isNullOrBlank()
     val hasUnrestoredLinks = restorableItems.isNotEmpty()
     val matchingRestore = remember(item?.bank?.name, restorableItems) {
@@ -367,14 +383,12 @@ fun BankDetailScreen(
                         }
                         Button(
                             onClick = {
-                                plaidConnectPending = true
-                                vm.checkBeforePlaidConnect(item.bank) { check ->
-                                    plaidConnectPending = false
-                                    if (!check.allowed) {
-                                        plaidBlockMessage = check.blockReason
-                                    } else {
-                                        plaidConfirmMessage = check.confirmMessage
-                                    }
+                                if (isPlaidConnected) {
+                                    reconnectPassword = ""
+                                    reconnectPasswordError = null
+                                    showReconnectPasswordDialog = true
+                                } else {
+                                    beginPlaidConnect()
                                 }
                             },
                             enabled = !plaidConnectPending &&
@@ -504,6 +518,70 @@ fun BankDetailScreen(
             text = { Text(message) },
             confirmButton = {
                 TextButton(onClick = { plaidBlockMessage = null }) { Text("OK") }
+            }
+        )
+    }
+
+    if (showReconnectPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showReconnectPasswordDialog = false
+                reconnectPassword = ""
+                reconnectPasswordError = null
+            },
+            title = { Text("Reconnect via Plaid") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Enter the family reconnect password. Reconnecting may use a Plaid Trial slot if the saved link cannot be repaired.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    OutlinedTextField(
+                        value = reconnectPassword,
+                        onValueChange = {
+                            reconnectPassword = it
+                            reconnectPasswordError = null
+                        },
+                        label = { Text("Password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    reconnectPasswordError?.let { error ->
+                        Text(
+                            error,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (reconnectPassword == FamilyAppConfig.PLAID_RECONNECT_PASSWORD) {
+                            showReconnectPasswordDialog = false
+                            reconnectPassword = ""
+                            reconnectPasswordError = null
+                            beginPlaidConnect()
+                        } else {
+                            reconnectPasswordError = "Incorrect password"
+                        }
+                    }
+                ) {
+                    Text("Continue")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showReconnectPasswordDialog = false
+                        reconnectPassword = ""
+                        reconnectPasswordError = null
+                    }
+                ) {
+                    Text("Cancel")
+                }
             }
         )
     }
