@@ -15,8 +15,8 @@ android {
         applicationId = "com.family.bankapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 21
-        versionName = "1.3.8"
+        versionCode = 22
+        versionName = "1.3.9"
     }
 
     buildTypes {
@@ -58,6 +58,7 @@ afterEvaluate {
             val versionCode = android.defaultConfig.versionCode
             val versionName = android.defaultConfig.versionName
             val apkSource = layout.buildDirectory.file("outputs/apk/debug/app-debug.apk").get().asFile
+            val apkSizeBytes = apkSource.length()
             val docsDir = rootProject.file("docs")
             docsDir.mkdirs()
             apkSource.copyTo(docsDir.resolve("FamilyBank.apk"), overwrite = true)
@@ -66,6 +67,7 @@ afterEvaluate {
                   "versionCode": $versionCode,
                   "versionName": "$versionName",
                   "apkUrl": "https://johnathonlarsen.github.io/billApp/FamilyBank.apk",
+                  "apkSizeBytes": $apkSizeBytes,
                   "releasedAt": "${Instant.now()}",
                   "notes": "Family Bank update"
                 }

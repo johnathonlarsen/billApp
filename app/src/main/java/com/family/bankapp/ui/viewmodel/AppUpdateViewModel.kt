@@ -34,6 +34,10 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
 
     private var nextInstallAttempt = 0L
 
+    init {
+        AppUpdateInstaller.cleanupStaleDownloads(getApplication())
+    }
+
     val currentVersionName: String
         get() = AppUpdateInstaller.currentVersionName(getApplication())
 
@@ -48,7 +52,7 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
             AppUpdateClient.fetchManifest()
                 .onSuccess { manifest ->
                     _state.value = if (manifest.versionCode > currentVersionCode) {
-                        AppUpdateInstaller.findCachedApk(getApplication(), manifest.versionCode)?.let { cached ->
+                        AppUpdateInstaller.findCachedApk(getApplication(), manifest)?.let { cached ->
                             readyToInstall(manifest, cached)
                             return@launch
                         }
@@ -74,12 +78,21 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun onInstallLaunchFailed(message: String) {
-        val ready = _state.value as? AppUpdateUiState.ReadyToInstall
-        _state.value = if (ready != null) {
-            ready
-        } else {
-            AppUpdateUiState.Error(message)
+        val ready = _state.value as? AppUpdateUiState.ReadyToInstall ?: run {
+            _state.value = AppUpdateUiState.Error(message)
+            return
         }
+        val context = getApplication<Application>()
+        if (AppUpdateInstaller.findCachedApk(context, ready.manifest) == null) {
+            AppUpdateInstaller.deleteUpdateFiles(context, ready.manifest.versionCode)
+            _state.value = AppUpdateUiState.Available(
+                ready.manifest.copy(
+                    notes = "Previous download was incomplete. Tap Update now to download again."
+                )
+            )
+            return
+        }
+        _state.value = ready
     }
 
     private fun readyToInstall(manifest: AppUpdateManifest, apkFile: File) {
@@ -92,14 +105,21 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private fun retryInstall(current: AppUpdateUiState.ReadyToInstall) {
+        val context = getApplication<Application>()
+        val cached = AppUpdateInstaller.findCachedApk(context, current.manifest)
+        if (cached == null) {
+            AppUpdateInstaller.deleteUpdateFiles(context, current.manifest.versionCode)
+            _state.value = AppUpdateUiState.Available(current.manifest)
+            return
+        }
         nextInstallAttempt += 1
-        _state.value = current.copy(installAttempt = nextInstallAttempt)
+        _state.value = current.copy(apkFile = cached, installAttempt = nextInstallAttempt)
     }
 
     private fun downloadAndInstall(manifest: AppUpdateManifest) {
         viewModelScope.launch {
             val context = getApplication<Application>()
-            AppUpdateInstaller.findCachedApk(context, manifest.versionCode)?.let { cached ->
+            AppUpdateInstaller.findCachedApk(context, manifest)?.let { cached ->
                 readyToInstall(manifest, cached)
                 return@launch
             }

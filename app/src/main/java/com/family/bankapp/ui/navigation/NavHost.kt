@@ -85,7 +85,7 @@ fun BankAppNavHost() {
         if (ready.installAttempt == lastAutoInstallAttempt) return@LaunchedEffect
         lastAutoInstallAttempt = ready.installAttempt
         kotlinx.coroutines.delay(350)
-        AppUpdateInstaller.startInstall(context, ready.apkFile)
+        AppUpdateInstaller.startInstall(context, ready.apkFile, ready.manifest.apkSizeBytes)
             .onFailure { error ->
                 updateVm.onInstallLaunchFailed(
                     error.message ?: "Could not open installer — tap Open installer"

@@ -37,7 +37,8 @@ object AppUpdateClient {
             versionName = versionName,
             apkUrl = apkUrl,
             releasedAt = json.optString("releasedAt").takeIf { it.isNotBlank() },
-            notes = json.optString("notes").takeIf { it.isNotBlank() }
+            notes = json.optString("notes").takeIf { it.isNotBlank() },
+            apkSizeBytes = json.optLong("apkSizeBytes").takeIf { it > 0L }
         )
     }
 }
