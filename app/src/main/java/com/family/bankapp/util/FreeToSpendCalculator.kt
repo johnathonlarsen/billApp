@@ -36,7 +36,6 @@ data class FreeToSpendSnapshot(
 )
 
 object FreeToSpendCalculator {
-    private const val PRIOR_MONTHS_LOOKBACK = 24
 
     fun calculate(
         accounts: List<AccountEntity>,
@@ -120,9 +119,13 @@ object FreeToSpendCalculator {
         currentMonth: YearMonth,
         today: LocalDate
     ): Long {
+        if (bills.isEmpty()) return 0L
+        val earliestTracked = bills.minOf { trackingStartMonth(it) }
+        if (!earliestTracked.isBefore(currentMonth)) return 0L
+
         var total = 0L
         var month = currentMonth.minusMonths(1)
-        repeat(PRIOR_MONTHS_LOOKBACK) {
+        while (!month.isBefore(earliestTracked)) {
             total += unpaidForMonth(
                 bills = bills,
                 payments = payments,
