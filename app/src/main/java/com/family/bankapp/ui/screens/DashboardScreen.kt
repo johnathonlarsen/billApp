@@ -217,10 +217,8 @@ fun DashboardScreen(padding: PaddingValues) {
 
 @Composable
 private fun FreeToSpendCard(fts: FreeToSpendSnapshot) {
-    val headlineColor = when {
-        fts.freeToSpendCents < 0 -> MaterialTheme.colorScheme.error
-        else -> StatusGreen
-    }
+    val isShort = fts.freeToSpendCents < 0
+    val headlineColor = if (isShort) MaterialTheme.colorScheme.error else StatusGreen
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -230,25 +228,41 @@ private fun FreeToSpendCard(fts: FreeToSpendSnapshot) {
         )
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Free to spend", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                if (isShort) "Over budget" else "Free to spend",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
             MoneyText(
                 fts.freeToSpendCents,
                 color = headlineColor,
-                style = MaterialTheme.typography.headlineMedium
+                style = MaterialTheme.typography.headlineMedium,
+                showSign = isShort
             )
             Text(
-                "After ${fts.currentMonthLabel} bills still owed",
+                if (isShort) {
+                    "${MoneyFormatter.format(-fts.freeToSpendCents)} more owed than your balance covers " +
+                        "(${fts.currentMonthLabel} + prior unpaid)"
+                } else {
+                    "After ${fts.currentMonthLabel} bills still owed"
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
                 "Balance ${MoneyFormatter.format(fts.liquidBalanceCents)} − " +
-                    "bills owed ${MoneyFormatter.format(fts.totalCommittedBillsCents)}",
+                    "bills owed ${MoneyFormatter.format(fts.totalCommittedBillsCents)} " +
+                    "(${MoneyFormatter.format(fts.currentMonthUnpaidCents)} this month" +
+                    if (fts.priorOverdueUnpaidCents > 0) {
+                        ", ${MoneyFormatter.format(fts.priorOverdueUnpaidCents)} prior"
+                    } else {
+                        ""
+                    } + ")",
                 style = MaterialTheme.typography.bodySmall
             )
-            if (fts.priorOverdueUnpaidCents > 0) {
+            if (fts.priorOverdueUnpaidCents > 0 && fts.includePriorOverdue) {
                 Text(
-                    "Includes ${MoneyFormatter.format(fts.priorOverdueUnpaidCents)} from prior months",
+                    "Prior unpaid counts from when each bill was added — mark paid or turn off in Settings.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

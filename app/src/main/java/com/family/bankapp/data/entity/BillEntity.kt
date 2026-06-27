@@ -31,5 +31,7 @@ data class BillEntity(
     val isActive: Boolean = true,
     val reminderDaysBefore: Int = 3,
     val lastPaidAt: Long? = null,
-    val notes: String = ""
+    val notes: String = "",
+    /** Only bill cycles on or after this month count toward free-to-spend (when added to the app). */
+    val trackingStartMillis: Long = System.currentTimeMillis()
 )

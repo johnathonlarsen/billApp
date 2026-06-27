@@ -385,7 +385,7 @@ fun SettingsScreen(
                     Column(Modifier.weight(1f)) {
                         Text("Include prior-month overdue bills", fontWeight = FontWeight.Bold)
                         Text(
-                            "When on, unpaid bills from earlier months reduce free-to-spend. " +
+                            "When on, unpaid bills from months after each bill was added reduce free-to-spend. " +
                                 "Current month only — never next month.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant

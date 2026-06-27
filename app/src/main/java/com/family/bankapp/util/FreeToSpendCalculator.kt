@@ -6,8 +6,10 @@ import com.family.bankapp.data.entity.IncomeEntity
 import com.family.bankapp.data.entity.PaymentRecordEntity
 import com.family.bankapp.data.model.AccountType
 import com.family.bankapp.data.model.BillRecurrence
+import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.ZoneId
 
 object RecurrenceNormalizer {
     /** Approximate monthly equivalent in cents for budgeting. */
@@ -50,9 +52,9 @@ object FreeToSpendCalculator {
         val plannedFree = monthlyIncome - monthlyBills
 
         val currentMonth = YearMonth.from(today)
-        val currentMonthUnpaid = unpaidForMonth(bills, payments, currentMonth)
+        val currentMonthUnpaid = unpaidForMonth(bills, payments, currentMonth, today, countUpcomingInMonth = true)
         val priorOverdue = if (includePriorOverdue) {
-            priorUnpaidBillsCents(bills, payments, currentMonth)
+            priorUnpaidBillsCents(bills, payments, currentMonth, today)
         } else {
             0L
         }
@@ -83,14 +85,30 @@ object FreeToSpendCalculator {
             }
         }
 
+    fun trackingStartMonth(bill: BillEntity): YearMonth =
+        YearMonth.from(
+            Instant.ofEpochMilli(bill.trackingStartMillis)
+                .atZone(ZoneId.systemDefault())
+                .toLocalDate()
+        )
+
+    private fun billTracksMonth(bill: BillEntity, yearMonth: YearMonth): Boolean =
+        !yearMonth.isBefore(trackingStartMonth(bill))
+
     private fun unpaidForMonth(
         bills: List<BillEntity>,
         payments: List<PaymentRecordEntity>,
-        yearMonth: YearMonth
+        yearMonth: YearMonth,
+        today: LocalDate,
+        countUpcomingInMonth: Boolean
     ): Long {
+        val currentMonth = YearMonth.from(today)
         return bills.sumOf { bill ->
+            if (!billTracksMonth(bill, yearMonth)) return@sumOf 0L
             if (!MonthTimeline.billAppliesToMonth(bill, yearMonth)) return@sumOf 0L
             val dueDate = BillSchedule.dueDateForYearMonth(bill, yearMonth)
+            if (yearMonth.isBefore(currentMonth) && !dueDate.isBefore(today)) return@sumOf 0L
+            if (yearMonth == currentMonth && !countUpcomingInMonth && dueDate.isAfter(today)) return@sumOf 0L
             val paid = BillSchedule.paymentForCycle(payments, bill.id, dueDate) != null
             if (paid) 0L else bill.amountCents
         }
@@ -99,12 +117,19 @@ object FreeToSpendCalculator {
     private fun priorUnpaidBillsCents(
         bills: List<BillEntity>,
         payments: List<PaymentRecordEntity>,
-        currentMonth: YearMonth
+        currentMonth: YearMonth,
+        today: LocalDate
     ): Long {
         var total = 0L
         var month = currentMonth.minusMonths(1)
         repeat(PRIOR_MONTHS_LOOKBACK) {
-            total += unpaidForMonth(bills, payments, month)
+            total += unpaidForMonth(
+                bills = bills,
+                payments = payments,
+                yearMonth = month,
+                today = today,
+                countUpcomingInMonth = false
+            )
             month = month.minusMonths(1)
         }
         return total

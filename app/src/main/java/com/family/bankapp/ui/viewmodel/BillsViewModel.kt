@@ -79,6 +79,7 @@ class BillsViewModel(application: Application) : AndroidViewModel(application) {
         notes: String
     ) {
         viewModelScope.launch {
+            val existing = if (id != 0L) repository.getBill(id) else null
             val bill = BillEntity(
                 id = id,
                 name = name.trim(),
@@ -89,7 +90,8 @@ class BillsViewModel(application: Application) : AndroidViewModel(application) {
                 dueDateMillis = dueDateMillis,
                 linkedAccountId = linkedAccountId,
                 reminderDaysBefore = reminderDaysBefore,
-                notes = notes.trim()
+                notes = notes.trim(),
+                trackingStartMillis = existing?.trackingStartMillis ?: System.currentTimeMillis()
             )
             if (id == 0L) repository.addBill(bill) else repository.updateBill(bill)
         }
