@@ -19,6 +19,7 @@ class SettingsRepository(private val context: Context) {
     private val plaidServerUrlKey = stringPreferencesKey("plaid_server_url")
     private val plaidItemLimitKey = intPreferencesKey("plaid_item_limit")
     private val appActivatedKey = booleanPreferencesKey("app_activated")
+    private val includePriorOverdueBillsKey = booleanPreferencesKey("include_prior_overdue_bills")
 
     val defaultReminderDays: Flow<Int> = context.dataStore.data.map { prefs ->
         prefs[reminderDaysKey] ?: 3
@@ -42,6 +43,11 @@ class SettingsRepository(private val context: Context) {
         prefs[appActivatedKey] ?: false
     }
 
+    /** When true, unpaid bills from prior months reduce free-to-spend. Default on. */
+    val includePriorOverdueBills: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[includePriorOverdueBillsKey] ?: true
+    }
+
     suspend fun setDefaultReminderDays(days: Int) {
         context.dataStore.edit { it[reminderDaysKey] = days.coerceIn(0, 14) }
     }
@@ -60,5 +66,9 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setAppActivated(activated: Boolean) {
         context.dataStore.edit { it[appActivatedKey] = activated }
+    }
+
+    suspend fun setIncludePriorOverdueBills(include: Boolean) {
+        context.dataStore.edit { it[includePriorOverdueBillsKey] = include }
     }
 }

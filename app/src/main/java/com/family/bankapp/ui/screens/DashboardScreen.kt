@@ -29,6 +29,7 @@ import com.family.bankapp.ui.components.MoneyText
 import com.family.bankapp.ui.components.SectionHeader
 import com.family.bankapp.ui.components.StatCard
 import com.family.bankapp.ui.viewmodel.DashboardViewModel
+import com.family.bankapp.util.FreeToSpendSnapshot
 import com.family.bankapp.util.MoneyFormatter
 import com.family.bankapp.util.MonthPillStatus
 import java.time.format.DateTimeFormatter
@@ -64,6 +65,12 @@ fun DashboardScreen(padding: PaddingValues) {
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+
+        state.freeToSpend?.let { fts ->
+            item {
+                FreeToSpendCard(fts)
             }
         }
 
@@ -204,6 +211,55 @@ fun DashboardScreen(padding: PaddingValues) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun FreeToSpendCard(fts: FreeToSpendSnapshot) {
+    val headlineColor = when {
+        fts.freeToSpendCents < 0 -> MaterialTheme.colorScheme.error
+        else -> StatusGreen
+    }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        )
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Free to spend", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            MoneyText(
+                fts.freeToSpendCents,
+                color = headlineColor,
+                style = MaterialTheme.typography.headlineMedium
+            )
+            Text(
+                "After ${fts.currentMonthLabel} bills still owed",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                "Balance ${MoneyFormatter.format(fts.liquidBalanceCents)} − " +
+                    "bills owed ${MoneyFormatter.format(fts.totalCommittedBillsCents)}",
+                style = MaterialTheme.typography.bodySmall
+            )
+            if (fts.priorOverdueUnpaidCents > 0) {
+                Text(
+                    "Includes ${MoneyFormatter.format(fts.priorOverdueUnpaidCents)} from prior months",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                "Plan: ${MoneyFormatter.format(fts.monthlyIncomeCents)} income − " +
+                    "${MoneyFormatter.format(fts.monthlyBillsCents)} bills = " +
+                    "${MoneyFormatter.format(fts.plannedFreeMonthlyCents)}/mo free",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

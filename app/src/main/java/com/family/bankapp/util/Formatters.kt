@@ -100,6 +100,23 @@ object BillSchedule {
                 }
                 candidate
             }
+            BillRecurrence.BIWEEKLY -> {
+                val anchor = bill.dueDateMillis?.let {
+                    Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
+                } ?: yearMonth.atDay(1)
+                var candidate = anchor
+                while (candidate.year < yearMonth.year ||
+                    (candidate.year == yearMonth.year && candidate.monthValue < yearMonth.monthValue)
+                ) {
+                    candidate = candidate.plusWeeks(2)
+                }
+                if (candidate.year > yearMonth.year ||
+                    (candidate.year == yearMonth.year && candidate.monthValue > yearMonth.monthValue)
+                ) {
+                    candidate = candidate.minusWeeks(2)
+                }
+                candidate
+            }
             BillRecurrence.ONE_TIME -> bill.dueDateMillis?.let {
                 Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
             } ?: yearMonth.atDay(1)
@@ -110,6 +127,7 @@ object BillSchedule {
         BillRecurrence.MONTHLY -> cycleDueDate.format(monthYearFormatter)
         BillRecurrence.YEARLY -> cycleDueDate.year.toString()
         BillRecurrence.WEEKLY -> "Week of ${cycleDueDate.format(fullDateFormatter)}"
+        BillRecurrence.BIWEEKLY -> "Pay period ${cycleDueDate.format(fullDateFormatter)}"
         BillRecurrence.ONE_TIME -> cycleDueDate.format(fullDateFormatter)
     }
 
@@ -135,6 +153,16 @@ object BillSchedule {
                 var candidate = anchor
                 while (candidate.isBefore(today)) {
                     candidate = candidate.plusWeeks(1)
+                }
+                candidate
+            }
+            BillRecurrence.BIWEEKLY -> {
+                val anchor = bill.dueDateMillis?.let {
+                    Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
+                } ?: today
+                var candidate = anchor
+                while (candidate.isBefore(today)) {
+                    candidate = candidate.plusWeeks(2)
                 }
                 candidate
             }
@@ -176,6 +204,9 @@ object BillSchedule {
             BillRecurrence.MONTHLY -> paidDate.year == dueDate.year && paidDate.month == dueDate.month
             BillRecurrence.WEEKLY -> ChronoUnit.WEEKS.between(paidDate, dueDate) == 0L ||
                 (paidDate.isBefore(dueDate) && paidDate.plusWeeks(1).isAfter(dueDate))
+            BillRecurrence.BIWEEKLY -> ChronoUnit.WEEKS.between(paidDate, dueDate).let { weeks ->
+                weeks == 0L || (weeks == 1L && paidDate.plusWeeks(2).isAfter(dueDate))
+            } || (paidDate.isBefore(dueDate) && !paidDate.plusWeeks(2).isBefore(dueDate))
             BillRecurrence.YEARLY -> paidDate.year == dueDate.year
             BillRecurrence.ONE_TIME -> true
         }

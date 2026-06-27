@@ -37,6 +37,7 @@ import com.family.bankapp.ui.screens.BillEditScreen
 import com.family.bankapp.ui.screens.BillsScreen
 import com.family.bankapp.ui.screens.BanksScreen
 import com.family.bankapp.ui.screens.DashboardScreen
+import com.family.bankapp.ui.screens.IncomeEditScreen
 import com.family.bankapp.ui.screens.PrivacyPolicyScreen
 import com.family.bankapp.ui.screens.SettingsScreen
 import android.content.Context
@@ -61,6 +62,10 @@ sealed class Screen(val route: String, val label: String) {
     }
     data object BillEdit : Screen("bill/edit?billId={billId}", "Bill") {
         fun createRoute(billId: Long? = null) = if (billId == null) "bill/edit" else "bill/edit?billId=$billId"
+    }
+    data object IncomeEdit : Screen("income/edit?incomeId={incomeId}", "Income") {
+        fun createRoute(incomeId: Long? = null) =
+            if (incomeId == null) "income/edit" else "income/edit?incomeId=$incomeId"
     }
 }
 
@@ -152,7 +157,9 @@ fun BankAppNavHost() {
                 BillsScreen(
                     padding = androidx.compose.foundation.layout.PaddingValues(),
                     onAddBill = { navController.navigate(Screen.BillEdit.createRoute()) },
-                    onEditBill = { id -> navController.navigate(Screen.BillEdit.createRoute(id)) }
+                    onEditBill = { id -> navController.navigate(Screen.BillEdit.createRoute(id)) },
+                    onAddIncome = { navController.navigate(Screen.IncomeEdit.createRoute()) },
+                    onEditIncome = { id -> navController.navigate(Screen.IncomeEdit.createRoute(id)) }
                 )
             }
             composable(
@@ -167,6 +174,21 @@ fun BankAppNavHost() {
                 val rawId = entry.arguments?.getLong("billId") ?: -1L
                 BillEditScreen(
                     billId = if (rawId < 0) null else rawId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable(
+                route = "income/edit?incomeId={incomeId}",
+                arguments = listOf(
+                    navArgument("incomeId") {
+                        type = NavType.LongType
+                        defaultValue = -1L
+                    }
+                )
+            ) { entry ->
+                val rawId = entry.arguments?.getLong("incomeId") ?: -1L
+                IncomeEditScreen(
+                    incomeId = if (rawId < 0) null else rawId,
                     onBack = { navController.popBackStack() }
                 )
             }

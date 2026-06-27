@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Switch
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.lazy.LazyColumn
 import com.family.bankapp.ui.components.AppUpdateSettingsCard
@@ -273,6 +274,7 @@ fun SettingsScreen(
     val vm: SettingsViewModel = viewModel()
     val reminderDays by vm.defaultReminderDays.collectAsState()
     val forecastDays by vm.forecastDays.collectAsState()
+    val includePriorOverdue by vm.includePriorOverdueBills.collectAsState()
     var showSampleConfirm by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -370,6 +372,31 @@ fun SettingsScreen(
                 range = 7..60,
                 onChange = vm::setForecastDays
             )
+        }
+
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Include prior-month overdue bills", fontWeight = FontWeight.Bold)
+                        Text(
+                            "When on, unpaid bills from earlier months reduce free-to-spend. " +
+                                "Current month only — never next month.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = includePriorOverdue,
+                        onCheckedChange = vm::setIncludePriorOverdueBills
+                    )
+                }
+            }
         }
 
         item {

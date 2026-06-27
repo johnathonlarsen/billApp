@@ -25,6 +25,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val forecastDays = app.settingsRepository.forecastDays
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 14)
 
+    val includePriorOverdueBills = app.settingsRepository.includePriorOverdueBills
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
     val plaidItemLimit = app.settingsRepository.plaidItemLimit
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 10)
 
@@ -46,6 +49,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setForecastDays(days: Int) {
         viewModelScope.launch { app.settingsRepository.setForecastDays(days) }
+    }
+
+    fun setIncludePriorOverdueBills(include: Boolean) {
+        viewModelScope.launch { app.settingsRepository.setIncludePriorOverdueBills(include) }
     }
 
     fun refreshPlaidUsage() {

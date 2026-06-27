@@ -250,10 +250,11 @@ class BanksViewModel(application: Application) : AndroidViewModel(application) {
         bankId: Long,
         name: String,
         type: AccountType,
-        notes: String = ""
+        notes: String = "",
+        includeInFreeToSpend: Boolean = true
     ) {
         viewModelScope.launch {
-            repository.addAccount(bankId, name, type, notes = notes)
+            repository.addAccount(bankId, name, type, notes = notes, includeInFreeToSpend = includeInFreeToSpend)
         }
     }
 

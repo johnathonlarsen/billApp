@@ -27,5 +27,7 @@ data class AccountEntity(
     /** Set when imported from Plaid /accounts/get. */
     val plaidAccountId: String? = null,
     val lastUpdatedAt: Long = System.currentTimeMillis(),
-    val notes: String = ""
+    val notes: String = "",
+    /** When false, savings balance is excluded from free-to-spend totals. Checking always counts. */
+    val includeInFreeToSpend: Boolean = true
 )

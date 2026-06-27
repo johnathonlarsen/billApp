@@ -8,6 +8,8 @@ import com.family.bankapp.data.repository.OverviewData
 import com.family.bankapp.data.settings.SettingsRepository
 import com.family.bankapp.util.BillDueInfo
 import com.family.bankapp.util.BillSchedule
+import com.family.bankapp.util.FreeToSpendCalculator
+import com.family.bankapp.util.FreeToSpendSnapshot
 import com.family.bankapp.util.MonthOverview
 import com.family.bankapp.util.MonthTimeline
 import java.time.YearMonth
@@ -22,14 +24,15 @@ data class BillDueWithLabel(
 )
 
 data class DashboardState(
-    val overview: OverviewData = OverviewData(emptyList(), emptyList(), emptyList(), emptyList()),
+    val overview: OverviewData = OverviewData(emptyList(), emptyList(), emptyList(), emptyList(), emptyList()),
     val forecastDays: Int = 14,
     val upcomingBills: List<BillDueWithLabel> = emptyList(),
     val overdueBills: List<BillDueWithLabel> = emptyList(),
     val upcomingTotalCents: Long = 0,
     val overdueTotalCents: Long = 0,
     val currentMonth: MonthOverview? = null,
-    val activeBillCount: Int = 0
+    val activeBillCount: Int = 0,
+    val freeToSpend: FreeToSpendSnapshot? = null
 )
 
 class DashboardViewModel(application: Application) : AndroidViewModel(application) {
@@ -39,8 +42,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     val state: StateFlow<DashboardState> = combine(
         repository.observeOverview(),
-        settings.forecastDays
-    ) { overview, forecastDays ->
+        settings.forecastDays,
+        settings.includePriorOverdueBills
+    ) { overview, forecastDays, includePriorOverdue ->
         val bills = overview.bills
         val payments = overview.payments
 
@@ -59,6 +63,18 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         val currentMonth = MonthTimeline.build(bills, payments)
             .find { it.yearMonth == YearMonth.now() }
 
+        val freeToSpend = if (overview.incomes.isNotEmpty() || bills.isNotEmpty() || overview.accounts.isNotEmpty()) {
+            FreeToSpendCalculator.calculate(
+                accounts = overview.accounts,
+                bills = bills,
+                incomes = overview.incomes,
+                payments = payments,
+                includePriorOverdue = includePriorOverdue
+            )
+        } else {
+            null
+        }
+
         DashboardState(
             overview = overview,
             forecastDays = forecastDays,
@@ -67,7 +83,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             upcomingTotalCents = upcoming.sumOf { it.dueInfo.bill.amountCents },
             overdueTotalCents = overdue.sumOf { it.dueInfo.bill.amountCents },
             currentMonth = currentMonth,
-            activeBillCount = bills.size
+            activeBillCount = bills.size,
+            freeToSpend = freeToSpend
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DashboardState())
 }

@@ -13,6 +13,7 @@ enum class AccountType(val label: String) {
 
 enum class BillRecurrence(val label: String) {
     MONTHLY("Monthly"),
+    BIWEEKLY("Biweekly"),
     WEEKLY("Weekly"),
     YEARLY("Yearly"),
     ONE_TIME("One-time")

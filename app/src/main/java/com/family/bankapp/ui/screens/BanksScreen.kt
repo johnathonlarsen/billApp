@@ -29,6 +29,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -495,6 +496,13 @@ fun BankDetailScreen(
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             }
+                            if (account.accountType == AccountType.SAVINGS && !account.includeInFreeToSpend) {
+                                Text(
+                                    "Excluded from free to spend",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                             if (account.notes.isNotBlank()) {
                                 Text(
                                     account.notes,
@@ -698,8 +706,8 @@ fun BankDetailScreen(
         AccountDialog(
             title = "Add account",
             onDismiss = { showAddAccount = false },
-            onConfirm = { name, type, notes ->
-                vm.addAccount(bankId, name, type, notes)
+            onConfirm = { name, type, notes, includeInFreeToSpend ->
+                vm.addAccount(bankId, name, type, notes, includeInFreeToSpend)
                 showAddAccount = false
             }
         )
@@ -711,13 +719,15 @@ fun BankDetailScreen(
             initialName = account.name,
             initialType = account.accountType,
             initialNotes = account.notes,
+            initialIncludeInFreeToSpend = account.includeInFreeToSpend,
             onDismiss = { editingAccount = null },
-            onConfirm = { name, type, notes ->
+            onConfirm = { name, type, notes, includeInFreeToSpend ->
                 vm.updateAccount(
                     account.copy(
                         name = name,
                         accountType = type,
-                        notes = notes
+                        notes = notes,
+                        includeInFreeToSpend = includeInFreeToSpend
                     )
                 )
                 editingAccount = null
@@ -885,13 +895,15 @@ private fun AccountDialog(
     initialName: String = "",
     initialType: AccountType = AccountType.CHECKING,
     initialNotes: String = "",
+    initialIncludeInFreeToSpend: Boolean = true,
     onDismiss: () -> Unit,
-    onConfirm: (String, AccountType, String) -> Unit,
+    onConfirm: (String, AccountType, String, Boolean) -> Unit,
     onDelete: (() -> Unit)? = null
 ) {
     var name by remember { mutableStateOf(initialName) }
     var type by remember { mutableStateOf(initialType) }
     var notes by remember { mutableStateOf(initialNotes) }
+    var includeInFreeToSpend by remember { mutableStateOf(initialIncludeInFreeToSpend) }
     var typeExpanded by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -931,10 +943,33 @@ private fun AccountDialog(
                     label = { Text("Notes (optional)") },
                     modifier = Modifier.fillMaxWidth()
                 )
+                if (type == AccountType.SAVINGS) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Count in free to spend")
+                            Text(
+                                "Turn off for savings you treat as off-limits",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = includeInFreeToSpend,
+                            onCheckedChange = { includeInFreeToSpend = it }
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(name, type, notes) }, enabled = name.isNotBlank()) {
+            Button(
+                onClick = { onConfirm(name, type, notes, includeInFreeToSpend) },
+                enabled = name.isNotBlank()
+            ) {
                 Text("Save")
             }
         },

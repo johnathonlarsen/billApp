@@ -1,0 +1,112 @@
+package com.family.bankapp.util
+
+import com.family.bankapp.data.entity.AccountEntity
+import com.family.bankapp.data.entity.BillEntity
+import com.family.bankapp.data.entity.IncomeEntity
+import com.family.bankapp.data.entity.PaymentRecordEntity
+import com.family.bankapp.data.model.AccountType
+import com.family.bankapp.data.model.BillRecurrence
+import java.time.LocalDate
+import java.time.YearMonth
+
+object RecurrenceNormalizer {
+    /** Approximate monthly equivalent in cents for budgeting. */
+    fun toMonthlyCents(amountCents: Long, recurrence: BillRecurrence): Long = when (recurrence) {
+        BillRecurrence.MONTHLY -> amountCents
+        BillRecurrence.BIWEEKLY -> (amountCents * 26L + 11) / 12L
+        BillRecurrence.WEEKLY -> (amountCents * 52L + 11) / 12L
+        BillRecurrence.YEARLY -> (amountCents + 5) / 12L
+        BillRecurrence.ONE_TIME -> 0L
+    }
+}
+
+data class FreeToSpendSnapshot(
+    val liquidBalanceCents: Long,
+    val monthlyIncomeCents: Long,
+    val monthlyBillsCents: Long,
+    val plannedFreeMonthlyCents: Long,
+    val currentMonthUnpaidCents: Long,
+    val priorOverdueUnpaidCents: Long,
+    val totalCommittedBillsCents: Long,
+    val freeToSpendCents: Long,
+    val includePriorOverdue: Boolean,
+    val currentMonthLabel: String
+)
+
+object FreeToSpendCalculator {
+    private const val PRIOR_MONTHS_LOOKBACK = 24
+
+    fun calculate(
+        accounts: List<AccountEntity>,
+        bills: List<BillEntity>,
+        incomes: List<IncomeEntity>,
+        payments: List<PaymentRecordEntity>,
+        includePriorOverdue: Boolean,
+        today: LocalDate = LocalDate.now()
+    ): FreeToSpendSnapshot {
+        val liquidBalance = freeToSpendBalance(accounts)
+        val monthlyIncome = incomes.sumOf { RecurrenceNormalizer.toMonthlyCents(it.amountCents, it.recurrence) }
+        val monthlyBills = bills.sumOf { RecurrenceNormalizer.toMonthlyCents(it.amountCents, it.recurrence) }
+        val plannedFree = monthlyIncome - monthlyBills
+
+        val currentMonth = YearMonth.from(today)
+        val currentMonthUnpaid = unpaidForMonth(bills, payments, currentMonth)
+        val priorOverdue = if (includePriorOverdue) {
+            priorUnpaidBillsCents(bills, payments, currentMonth)
+        } else {
+            0L
+        }
+        val committed = currentMonthUnpaid + priorOverdue
+        val freeToSpend = liquidBalance - committed
+
+        return FreeToSpendSnapshot(
+            liquidBalanceCents = liquidBalance,
+            monthlyIncomeCents = monthlyIncome,
+            monthlyBillsCents = monthlyBills,
+            plannedFreeMonthlyCents = plannedFree,
+            currentMonthUnpaidCents = currentMonthUnpaid,
+            priorOverdueUnpaidCents = priorOverdue,
+            totalCommittedBillsCents = committed,
+            freeToSpendCents = freeToSpend,
+            includePriorOverdue = includePriorOverdue,
+            currentMonthLabel = currentMonth.format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy"))
+        )
+    }
+
+    fun freeToSpendBalance(accounts: List<AccountEntity>): Long =
+        accounts.sumOf { account ->
+            when (account.accountType) {
+                AccountType.CREDIT -> 0L
+                AccountType.CHECKING -> account.balanceCents
+                AccountType.SAVINGS ->
+                    if (account.includeInFreeToSpend) account.balanceCents else 0L
+            }
+        }
+
+    private fun unpaidForMonth(
+        bills: List<BillEntity>,
+        payments: List<PaymentRecordEntity>,
+        yearMonth: YearMonth
+    ): Long {
+        return bills.sumOf { bill ->
+            if (!MonthTimeline.billAppliesToMonth(bill, yearMonth)) return@sumOf 0L
+            val dueDate = BillSchedule.dueDateForYearMonth(bill, yearMonth)
+            val paid = BillSchedule.paymentForCycle(payments, bill.id, dueDate) != null
+            if (paid) 0L else bill.amountCents
+        }
+    }
+
+    private fun priorUnpaidBillsCents(
+        bills: List<BillEntity>,
+        payments: List<PaymentRecordEntity>,
+        currentMonth: YearMonth
+    ): Long {
+        var total = 0L
+        var month = currentMonth.minusMonths(1)
+        repeat(PRIOR_MONTHS_LOOKBACK) {
+            total += unpaidForMonth(bills, payments, month)
+            month = month.minusMonths(1)
+        }
+        return total
+    }
+}

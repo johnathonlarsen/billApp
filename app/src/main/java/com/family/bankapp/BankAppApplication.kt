@@ -21,7 +21,8 @@ class BankAppApplication : Application() {
             db.accountDao(),
             db.billDao(),
             db.paymentRecordDao(),
-            db.plaidTransactionDao()
+            db.plaidTransactionDao(),
+            db.incomeDao()
         )
         settingsRepository = SettingsRepository(this)
         NotificationHelper.createChannel(this)

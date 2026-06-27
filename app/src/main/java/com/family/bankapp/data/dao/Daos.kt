@@ -9,6 +9,7 @@ import androidx.room.Update
 import com.family.bankapp.data.entity.AccountEntity
 import com.family.bankapp.data.entity.BankEntity
 import com.family.bankapp.data.entity.BillEntity
+import com.family.bankapp.data.entity.IncomeEntity
 import com.family.bankapp.data.entity.PaymentRecordEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -124,6 +125,24 @@ interface PaymentRecordDao {
 
     @Delete
     suspend fun delete(record: PaymentRecordEntity)
+}
+
+@Dao
+interface IncomeDao {
+    @Query("SELECT * FROM income_sources WHERE isActive = 1 ORDER BY name ASC")
+    fun observeActive(): Flow<List<IncomeEntity>>
+
+    @Query("SELECT * FROM income_sources WHERE id = :id")
+    suspend fun getById(id: Long): IncomeEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(income: IncomeEntity): Long
+
+    @Update
+    suspend fun update(income: IncomeEntity)
+
+    @Delete
+    suspend fun delete(income: IncomeEntity)
 }
 
 @Dao

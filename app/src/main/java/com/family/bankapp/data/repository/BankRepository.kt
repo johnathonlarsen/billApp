@@ -8,7 +8,9 @@ import com.family.bankapp.data.entity.AccountEntity
 import com.family.bankapp.data.entity.BankEntity
 import com.family.bankapp.data.entity.BillEntity
 import com.family.bankapp.data.entity.PaymentRecordEntity
+import com.family.bankapp.data.dao.IncomeDao
 import com.family.bankapp.data.dao.PlaidTransactionDao
+import com.family.bankapp.data.entity.IncomeEntity
 import com.family.bankapp.data.entity.PlaidTransactionEntity
 import com.family.bankapp.data.model.ConnectionType
 import com.family.bankapp.plaid.PlaidAccountSnapshot
@@ -24,7 +26,8 @@ class BankRepository(
     private val accountDao: AccountDao,
     private val billDao: BillDao,
     private val paymentRecordDao: PaymentRecordDao,
-    private val plaidTransactionDao: PlaidTransactionDao
+    private val plaidTransactionDao: PlaidTransactionDao,
+    private val incomeDao: IncomeDao
 ) {
     companion object {
         const val MAX_BANKS = 3
@@ -43,14 +46,16 @@ class BankRepository(
         paymentRecordDao.observeByBill(billId)
 
     fun observeAllPayments(): Flow<List<PaymentRecordEntity>> = paymentRecordDao.observeAll()
+    fun observeActiveIncomes(): Flow<List<IncomeEntity>> = incomeDao.observeActive()
 
     fun observeOverview(): Flow<OverviewData> = combine(
         bankDao.observeAll(),
         accountDao.observeAll(),
         billDao.observeActive(),
-        paymentRecordDao.observeAll()
-    ) { banks, accounts, bills, payments ->
-        OverviewData(banks, accounts, bills, payments)
+        paymentRecordDao.observeAll(),
+        incomeDao.observeActive()
+    ) { banks, accounts, bills, payments, incomes ->
+        OverviewData(banks, accounts, bills, payments, incomes)
     }
 
     suspend fun getBank(id: Long): BankEntity? = bankDao.getById(id)
@@ -59,6 +64,7 @@ class BankRepository(
     suspend fun getLocalPlaidItemIds(): List<String> = bankDao.getAllPlaidItemIds()
     suspend fun getAccount(id: Long): AccountEntity? = accountDao.getById(id)
     suspend fun getBill(id: Long): BillEntity? = billDao.getById(id)
+    suspend fun getIncome(id: Long): IncomeEntity? = incomeDao.getById(id)
 
     suspend fun getBankCount(): Int = bankDao.getCount()
 
@@ -216,14 +222,20 @@ class BankRepository(
         bankId: Long,
         name: String,
         accountType: com.family.bankapp.data.model.AccountType,
-        notes: String = ""
+        notes: String = "",
+        includeInFreeToSpend: Boolean = true
     ): Long = accountDao.insert(
         AccountEntity(
             bankId = bankId,
             name = name.trim(),
             accountType = accountType,
             balanceCents = 0,
-            notes = notes.trim()
+            notes = notes.trim(),
+            includeInFreeToSpend = if (accountType == com.family.bankapp.data.model.AccountType.SAVINGS) {
+                includeInFreeToSpend
+            } else {
+                true
+            }
         )
     )
 
@@ -237,6 +249,10 @@ class BankRepository(
     }
     suspend fun updateBill(bill: BillEntity) = billDao.update(bill)
     suspend fun deleteBill(bill: BillEntity) = billDao.delete(bill)
+
+    suspend fun addIncome(income: IncomeEntity): Long = incomeDao.insert(income)
+    suspend fun updateIncome(income: IncomeEntity) = incomeDao.update(income)
+    suspend fun deleteIncome(income: IncomeEntity) = incomeDao.delete(income)
 
     suspend fun markBillPaid(
         bill: BillEntity,
@@ -281,5 +297,6 @@ data class OverviewData(
     val banks: List<BankEntity>,
     val accounts: List<AccountEntity>,
     val bills: List<BillEntity>,
-    val payments: List<PaymentRecordEntity> = emptyList()
+    val payments: List<PaymentRecordEntity> = emptyList(),
+    val incomes: List<IncomeEntity> = emptyList()
 )

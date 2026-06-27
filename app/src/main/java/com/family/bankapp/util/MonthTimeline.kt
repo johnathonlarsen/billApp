@@ -169,6 +169,10 @@ object MonthTimeline {
                 val due = BillSchedule.dueDateForYearMonth(bill, yearMonth)
                 YearMonth.from(due) == yearMonth
             }
+            BillRecurrence.BIWEEKLY -> {
+                val due = BillSchedule.dueDateForYearMonth(bill, yearMonth)
+                YearMonth.from(due) == yearMonth
+            }
             BillRecurrence.ONE_TIME -> {
                 bill.dueDateMillis?.let {
                     YearMonth.from(BillSchedule.fromCycleMillis(it)) == yearMonth

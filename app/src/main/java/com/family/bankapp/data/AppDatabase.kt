@@ -16,7 +16,9 @@ import com.family.bankapp.data.entity.AccountEntity
 import com.family.bankapp.data.entity.BankEntity
 import com.family.bankapp.data.entity.BillEntity
 import com.family.bankapp.data.entity.PaymentRecordEntity
+import com.family.bankapp.data.dao.IncomeDao
 import com.family.bankapp.data.dao.PlaidTransactionDao
+import com.family.bankapp.data.entity.IncomeEntity
 import com.family.bankapp.data.entity.PlaidTransactionEntity
 import com.family.bankapp.data.model.AccountType
 import com.family.bankapp.data.model.BillCategory
@@ -43,9 +45,10 @@ class Converters {
         AccountEntity::class,
         BillEntity::class,
         PaymentRecordEntity::class,
-        PlaidTransactionEntity::class
+        PlaidTransactionEntity::class,
+        IncomeEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -55,6 +58,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun billDao(): BillDao
     abstract fun paymentRecordDao(): PaymentRecordDao
     abstract fun plaidTransactionDao(): PlaidTransactionDao
+    abstract fun incomeDao(): IncomeDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null
@@ -101,6 +105,33 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE accounts ADD COLUMN includeInFreeToSpend INTEGER NOT NULL DEFAULT 1"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS income_sources (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        name TEXT NOT NULL,
+                        amountCents INTEGER NOT NULL,
+                        dueDayOfMonth INTEGER NOT NULL,
+                        dueDateMillis INTEGER,
+                        recurrence TEXT NOT NULL,
+                        linkedAccountId INTEGER,
+                        isActive INTEGER NOT NULL,
+                        notes TEXT NOT NULL,
+                        FOREIGN KEY(linkedAccountId) REFERENCES accounts(id) ON DELETE SET NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_income_sources_linkedAccountId ON income_sources(linkedAccountId)"
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -108,7 +139,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "family_bank.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build().also { instance = it }
             }
         }
