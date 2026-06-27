@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.family.bankapp.FamilyAppConfig
+import com.family.bankapp.data.entity.AccountEntity
 import com.family.bankapp.data.entity.PlaidTransactionEntity
 import com.family.bankapp.data.model.AccountType
 import com.family.bankapp.data.model.BillRecurrence
@@ -212,6 +213,9 @@ fun BankDetailScreen(
     }
 
     val plaidTransactions by vm.observePlaidTransactions(bankId).collectAsState(initial = emptyList())
+    val groupedPlaidTransactions = remember(plaidTransactions, item?.accounts) {
+        groupPlaidTransactionsByAccount(plaidTransactions, item?.accounts.orEmpty())
+    }
     val isPlaidConnected = !item?.bank?.plaidItemId.isNullOrBlank()
     val hasUnrestoredLinks = restorableItems.isNotEmpty()
     val matchingRestore = remember(item?.bank?.name, restorableItems) {
@@ -517,15 +521,23 @@ fun BankDetailScreen(
                         )
                     }
                 } else {
-                    items(plaidTransactions) { tx ->
-                        PlaidTransactionRow(
-                            tx = tx,
-                            onAddAsBill = if (tx.canAddAsBill()) {
-                                { billFromTransaction = tx }
-                            } else {
-                                null
-                            }
-                        )
+                    groupedPlaidTransactions.forEach { group ->
+                        item {
+                            PlaidAccountTransactionHeader(
+                                accountLabel = group.accountLabel,
+                                transactionCount = group.transactions.size
+                            )
+                        }
+                        items(group.transactions, key = { it.plaidTransactionId }) { tx ->
+                            PlaidTransactionRow(
+                                tx = tx,
+                                onAddAsBill = if (tx.canAddAsBill()) {
+                                    { billFromTransaction = tx }
+                                } else {
+                                    null
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -716,6 +728,64 @@ fun BankDetailScreen(
             }
         )
     }
+}
+
+@Composable
+private fun PlaidAccountTransactionHeader(
+    accountLabel: String,
+    transactionCount: Int
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp)
+    ) {
+        Text(
+            accountLabel,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            "$transactionCount transaction(s)",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+private data class PlaidAccountTransactionGroup(
+    val accountLabel: String,
+    val sortOrder: Int,
+    val transactions: List<PlaidTransactionEntity>
+)
+
+private fun groupPlaidTransactionsByAccount(
+    transactions: List<PlaidTransactionEntity>,
+    accounts: List<AccountEntity>
+): List<PlaidAccountTransactionGroup> {
+    val accountByPlaidId = accounts.mapNotNull { account ->
+        account.plaidAccountId?.let { it to account }
+    }.toMap()
+
+    return transactions
+        .groupBy { it.plaidAccountId }
+        .map { (plaidAccountId, txs) ->
+            val account = accountByPlaidId[plaidAccountId]
+            val label = account?.name ?: "Plaid account ···${plaidAccountId.takeLast(4)}"
+            val sortOrder = account?.let { acc ->
+                accounts.indexOfFirst { it.id == acc.id }.takeIf { it >= 0 }
+            } ?: Int.MAX_VALUE
+            PlaidAccountTransactionGroup(
+                accountLabel = label,
+                sortOrder = sortOrder,
+                transactions = txs.sortedWith(
+                    compareByDescending<PlaidTransactionEntity> { it.date }
+                        .thenByDescending { it.plaidTransactionId }
+                )
+            )
+        }
+        .sortedWith(compareBy({ it.sortOrder }, { it.accountLabel }))
 }
 
 @Composable
