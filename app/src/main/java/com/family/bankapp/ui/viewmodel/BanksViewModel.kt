@@ -228,14 +228,27 @@ class BanksViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun disconnectPlaidLink(bankId: Long, onResult: (Result<String>) -> Unit) {
+    fun removePlaidConnection(bankId: Long, onResult: (Result<Unit>) -> Unit) {
         viewModelScope.launch {
             try {
-                val itemId = repository.disconnectPlaidLink(bankId)
+                val bank = repository.getBank(bankId)
+                    ?: return@launch onResult(Result.failure(IllegalStateException("Bank not found")))
+                val itemId = bank.plaidItemId
                     ?: return@launch onResult(
                         Result.failure(IllegalStateException("This bank is not connected via Plaid"))
                     )
-                onResult(Result.success(itemId))
+
+                PlaidApiClient.removePlaidItem(itemId)
+                    .onFailure { e ->
+                        onResult(Result.failure(e))
+                        return@launch
+                    }
+
+                repository.unlinkPlaidLocally(bankId)
+                    ?: return@launch onResult(
+                        Result.failure(IllegalStateException("Could not update bank on this phone"))
+                    )
+                onResult(Result.success(Unit))
             } finally {
                 app.requestPlaidUsageRefresh()
             }

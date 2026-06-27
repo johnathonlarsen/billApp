@@ -191,8 +191,10 @@ fun BankDetailScreen(
     var restorableLoading by remember { mutableStateOf(false) }
     var restoreBusyItemId by remember { mutableStateOf<String?>(null) }
     var preferredRestoreItemId by remember { mutableStateOf<String?>(null) }
-    var showDisconnectConfirm by remember { mutableStateOf(false) }
-    var disconnectBusy by remember { mutableStateOf(false) }
+    var showRemovePlaidDialog by remember { mutableStateOf(false) }
+    var removePlaidBusy by remember { mutableStateOf(false) }
+    var removePlaidPassword by remember { mutableStateOf("") }
+    var removePlaidPasswordError by remember { mutableStateOf<String?>(null) }
     var showReconnectPasswordDialog by remember { mutableStateOf(false) }
     var reconnectPassword by remember { mutableStateOf("") }
     var reconnectPasswordError by remember { mutableStateOf<String?>(null) }
@@ -337,17 +339,21 @@ fun BankDetailScreen(
                                         }
                                     }
                                 },
-                                enabled = !plaidSyncBusy && !plaidLinkBusy && !disconnectBusy,
+                                enabled = !plaidSyncBusy && !plaidLinkBusy && !removePlaidBusy,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(if (plaidSyncBusy) "Syncing…" else "Sync from Plaid")
                             }
                             OutlinedButton(
-                                onClick = { showDisconnectConfirm = true },
-                                enabled = !plaidSyncBusy && !plaidLinkBusy && !disconnectBusy,
+                                onClick = {
+                                    removePlaidPassword = ""
+                                    removePlaidPasswordError = null
+                                    showRemovePlaidDialog = true
+                                },
+                                enabled = !plaidSyncBusy && !plaidLinkBusy && !removePlaidBusy,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(if (disconnectBusy) "Disconnecting…" else "Disconnect Plaid")
+                                Text(if (removePlaidBusy) "Removing…" else "Remove Plaid connection")
                             }
                         } else {
                             Text(
@@ -643,42 +649,88 @@ fun BankDetailScreen(
         )
     }
 
-    if (showDisconnectConfirm) {
+    if (showRemovePlaidDialog) {
         AlertDialog(
-            onDismissRequest = { if (!disconnectBusy) showDisconnectConfirm = false },
-            title = { Text("Disconnect Plaid?") },
+            onDismissRequest = {
+                if (!removePlaidBusy) {
+                    showRemovePlaidDialog = false
+                    removePlaidPassword = ""
+                    removePlaidPasswordError = null
+                }
+            },
+            title = { Text("Remove Plaid connection?") },
             text = {
-                Text(
-                    "This unlinks Plaid on this phone only. Accounts, balances, and transactions stay here. " +
-                        "Your saved link remains on the server — use Restore saved link to reconnect without a new Trial slot."
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "This revokes the bank link with Plaid and deletes the saved token on our server. " +
+                            "Accounts and cached transactions stay on this phone as labels only. " +
+                            "Uninstalling the app without using this does not remove the link — " +
+                            "you can still restore on a new install.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        "Enter the family password to confirm. This cannot be undone without connecting again " +
+                            "(which may use a Plaid Trial slot).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    OutlinedTextField(
+                        value = removePlaidPassword,
+                        onValueChange = {
+                            removePlaidPassword = it
+                            removePlaidPasswordError = null
+                        },
+                        label = { Text("Password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    removePlaidPasswordError?.let { error ->
+                        Text(
+                            error,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        disconnectBusy = true
-                        vm.disconnectPlaidLink(bankId) { result ->
-                            disconnectBusy = false
-                            showDisconnectConfirm = false
-                            result.onSuccess { itemId ->
-                                preferredRestoreItemId = itemId
+                        if (removePlaidPassword != FamilyAppConfig.PLAID_RECONNECT_PASSWORD) {
+                            removePlaidPasswordError = "Incorrect password"
+                            return@Button
+                        }
+                        removePlaidBusy = true
+                        vm.removePlaidConnection(bankId) { result ->
+                            removePlaidBusy = false
+                            showRemovePlaidDialog = false
+                            removePlaidPassword = ""
+                            removePlaidPasswordError = null
+                            result.onSuccess {
+                                preferredRestoreItemId = null
                                 plaidStatusMessage =
-                                    "Plaid disconnected. Accounts and transactions are still on this phone.\n\n" +
-                                    "Tap Restore saved link below to reconnect without relinking."
+                                    "Plaid connection removed for ${item.bank.name}.\n\n" +
+                                    "Local accounts and transactions are unchanged. " +
+                                    "To link this bank again, use Connect via Plaid (uses a Trial slot)."
                             }.onFailure { e ->
-                                plaidStatusMessage = e.message ?: "Could not disconnect Plaid"
+                                plaidStatusMessage = e.message ?: "Could not remove Plaid connection"
                             }
                         }
                     },
-                    enabled = !disconnectBusy
+                    enabled = !removePlaidBusy
                 ) {
-                    Text(if (disconnectBusy) "Disconnecting…" else "Disconnect")
+                    Text(if (removePlaidBusy) "Removing…" else "Remove connection")
                 }
             },
             dismissButton = {
                 TextButton(
-                    onClick = { showDisconnectConfirm = false },
-                    enabled = !disconnectBusy
+                    onClick = {
+                        showRemovePlaidDialog = false
+                        removePlaidPassword = ""
+                        removePlaidPasswordError = null
+                    },
+                    enabled = !removePlaidBusy
                 ) {
                     Text("Cancel")
                 }

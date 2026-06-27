@@ -109,6 +109,18 @@ object PlaidApiClient {
         }
     }
 
+    suspend fun removePlaidItem(itemId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            postFunction(
+                "plaid-item-remove",
+                JSONObject()
+                    .put("team_id", FamilyAppConfig.SUPABASE_TEAM_ID)
+                    .put("item_id", itemId)
+            )
+            Unit
+        }
+    }
+
     fun postFunction(functionName: String, body: JSONObject): JSONObject {
         val base = FamilyAppConfig.SUPABASE_URL.trim().removeSuffix("/")
         val conn = (URL("$base/functions/v1/$functionName").openConnection() as HttpURLConnection).apply {

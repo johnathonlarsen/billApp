@@ -6,7 +6,7 @@ package com.family.bankapp.legal
  */
 object PrivacyPolicyText {
     const val TITLE = "Family Bank Privacy Policy"
-    const val LAST_UPDATED = "June 26, 2026"
+    const val LAST_UPDATED = "June 27, 2026"
     const val CONTACT = "johnathon.larsen@gmail.com"
 
     val sections: List<Pair<String, String>> = listOf(
@@ -20,7 +20,9 @@ object PrivacyPolicyText {
             "• Bank and account labels you create\n" +
             "• Payment records when you mark bills paid\n\n" +
             "Via Plaid (when you connect a bank):\n" +
-            "• Transaction data to suggest when bills were paid\n" +
+            "• Account names and last-four digits (masks)\n" +
+            "• Account balances\n" +
+            "• Transaction descriptions, amounts, and dates (up to 90 days)\n" +
             "• Bank login is handled by Plaid — we never see or store your bank password\n\n" +
             "On our shared server (Supabase):\n" +
             "• Anonymous counters (Plaid slot usage, API call budget)\n" +
@@ -37,22 +39,29 @@ object PrivacyPolicyText {
         "Plaid" to
             "We use Plaid Inc. to connect to financial institutions. When you connect a bank, Plaid's " +
             "privacy policy applies to that connection: https://plaid.com/legal/#end-user-privacy-policy\n\n" +
-            "You can disconnect a bank at any time in the app or via https://my.plaid.com/",
+            "You can also manage connections at https://my.plaid.com/",
 
         "Where data is stored" to
             "• Bills and most app data stay on your phone only (no cloud sync between devices)\n" +
             "• Plaid tokens and usage counters are stored on Supabase (encrypted at rest by Supabase)\n" +
             "• Each family member's phone has its own local copy of bills",
 
-        "Retention" to
+        "Retention and removing Plaid" to
             "• Local bill data stays until you delete it or uninstall the app\n" +
-            "• Plaid connection tokens are removed when you disconnect a bank\n" +
+            "• Uninstalling the app does not remove your Plaid connection from our server — " +
+            "you can restore the saved link on a new install without relinking\n" +
+            "• Remove Plaid connection (Banks screen, family password required) revokes the link with Plaid, " +
+            "deletes the server token, and unlinks the bank on your phone. Local accounts and cached " +
+            "transactions remain as labels only\n" +
+            "• Removing a connection does not refund Plaid Trial slots on Plaid's billing plan\n" +
             "• API usage counters reset monthly",
 
         "Your choices" to
             "• You can use the app without connecting Plaid (manual bill entry only)\n" +
-            "• You can disconnect Plaid for any bank in the Banks screen\n" +
-            "• You can delete bills, banks, and payment history in the app",
+            "• You can restore a saved Plaid link after reinstalling the app\n" +
+            "• You can permanently remove a Plaid connection with the password-protected option in the Banks screen\n" +
+            "• You can delete bills, banks, and payment history in the app\n" +
+            "• Contact us at $CONTACT to request deletion of server-side Plaid data",
 
         "Children" to
             "This app is for adult family members managing household bills. It is not directed at children under 13.",
