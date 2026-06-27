@@ -1,5 +1,6 @@
 package com.family.bankapp.util
 
+import com.family.bankapp.data.entity.BillCycleSkipEntity
 import com.family.bankapp.data.entity.BillEntity
 import com.family.bankapp.data.entity.PaymentRecordEntity
 import com.family.bankapp.data.model.BillRecurrence
@@ -38,6 +39,7 @@ object MonthTimeline {
     fun build(
         bills: List<BillEntity>,
         payments: List<PaymentRecordEntity>,
+        skips: List<BillCycleSkipEntity> = emptyList(),
         today: LocalDate = LocalDate.now()
     ): List<MonthOverview> {
         val current = YearMonth.from(today)
@@ -78,7 +80,7 @@ object MonthTimeline {
         }
 
         return months.map { month ->
-            buildMonthOverview(bills, payments, month, coreRange)
+            buildMonthOverview(bills, payments, skips, month, coreRange)
         }
     }
 
@@ -108,6 +110,7 @@ object MonthTimeline {
     private fun buildMonthOverview(
         bills: List<BillEntity>,
         payments: List<PaymentRecordEntity>,
+        skips: List<BillCycleSkipEntity>,
         yearMonth: YearMonth,
         coreRange: ClosedRange<YearMonth>
     ): MonthOverview {
@@ -127,8 +130,9 @@ object MonthTimeline {
             )
         }
 
-        val entries = applicableBills.map { bill ->
+        val entries = applicableBills.mapNotNull { bill ->
             val dueDate = BillSchedule.dueDateForYearMonth(bill, yearMonth)
+            if (BillSchedule.isCycleSkipped(skips, bill.id, dueDate)) return@mapNotNull null
             val payment = BillSchedule.paymentForCycle(payments, bill.id, dueDate)
             MonthBillEntry(
                 bill = bill,

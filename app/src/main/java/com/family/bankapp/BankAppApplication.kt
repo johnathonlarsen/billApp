@@ -33,7 +33,8 @@ class BankAppApplication : Application() {
             db.billDao(),
             db.paymentRecordDao(),
             db.plaidTransactionDao(),
-            db.incomeDao()
+            db.incomeDao(),
+            db.billCycleSkipDao()
         )
         settingsRepository = SettingsRepository(this)
         NotificationHelper.createChannel(this)

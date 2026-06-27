@@ -9,6 +9,7 @@ import androidx.room.Update
 import com.family.bankapp.data.entity.AccountEntity
 import com.family.bankapp.data.entity.BankEntity
 import com.family.bankapp.data.entity.BillEntity
+import com.family.bankapp.data.entity.BillCycleSkipEntity
 import com.family.bankapp.data.entity.IncomeEntity
 import com.family.bankapp.data.entity.PaymentRecordEntity
 import kotlinx.coroutines.flow.Flow
@@ -125,6 +126,18 @@ interface PaymentRecordDao {
 
     @Delete
     suspend fun delete(record: PaymentRecordEntity)
+}
+
+@Dao
+interface BillCycleSkipDao {
+    @Query("SELECT * FROM bill_cycle_skips ORDER BY cycleDueDateMillis DESC")
+    fun observeAll(): Flow<List<BillCycleSkipEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(skip: BillCycleSkipEntity): Long
+
+    @Query("DELETE FROM bill_cycle_skips WHERE billId = :billId AND cycleDueDateMillis = :cycleDueDateMillis")
+    suspend fun deleteForCycle(billId: Long, cycleDueDateMillis: Long)
 }
 
 @Dao

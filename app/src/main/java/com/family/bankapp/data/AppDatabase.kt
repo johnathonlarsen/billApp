@@ -16,8 +16,10 @@ import com.family.bankapp.data.entity.AccountEntity
 import com.family.bankapp.data.entity.BankEntity
 import com.family.bankapp.data.entity.BillEntity
 import com.family.bankapp.data.entity.PaymentRecordEntity
+import com.family.bankapp.data.dao.BillCycleSkipDao
 import com.family.bankapp.data.dao.IncomeDao
 import com.family.bankapp.data.dao.PlaidTransactionDao
+import com.family.bankapp.data.entity.BillCycleSkipEntity
 import com.family.bankapp.data.entity.IncomeEntity
 import com.family.bankapp.data.entity.PlaidTransactionEntity
 import com.family.bankapp.data.model.AccountType
@@ -46,9 +48,10 @@ class Converters {
         BillEntity::class,
         PaymentRecordEntity::class,
         PlaidTransactionEntity::class,
-        IncomeEntity::class
+        IncomeEntity::class,
+        BillCycleSkipEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -59,6 +62,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun paymentRecordDao(): PaymentRecordDao
     abstract fun plaidTransactionDao(): PlaidTransactionDao
     abstract fun incomeDao(): IncomeDao
+    abstract fun billCycleSkipDao(): BillCycleSkipDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null
@@ -144,6 +148,28 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS bill_cycle_skips (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        billId INTEGER NOT NULL,
+                        cycleDueDateMillis INTEGER NOT NULL,
+                        FOREIGN KEY(billId) REFERENCES bills(id) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_bill_cycle_skips_billId ON bill_cycle_skips(billId)"
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS index_bill_cycle_skips_billId_cycleDueDateMillis " +
+                        "ON bill_cycle_skips(billId, cycleDueDateMillis)"
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -151,7 +177,14 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "family_bank.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(
+                        MIGRATION_1_2,
+                        MIGRATION_2_3,
+                        MIGRATION_3_4,
+                        MIGRATION_4_5,
+                        MIGRATION_5_6,
+                        MIGRATION_6_7
+                    )
                     .build().also { instance = it }
             }
         }

@@ -24,7 +24,7 @@ data class BillDueWithLabel(
 )
 
 data class DashboardState(
-    val overview: OverviewData = OverviewData(emptyList(), emptyList(), emptyList(), emptyList(), emptyList()),
+    val overview: OverviewData = OverviewData(emptyList(), emptyList(), emptyList()),
     val forecastDays: Int = 14,
     val upcomingBills: List<BillDueWithLabel> = emptyList(),
     val overdueBills: List<BillDueWithLabel> = emptyList(),
@@ -60,7 +60,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         val upcoming = BillSchedule.upcomingBills(bills, forecastDays, payments).map { enrich(it) }
         val overdue = allDue.filter { it.isOverdue }.sortedBy { it.dueDate }.map { enrich(it) }
 
-        val currentMonth = MonthTimeline.build(bills, payments)
+        val currentMonth = MonthTimeline.build(bills, payments, overview.billCycleSkips)
             .find { it.yearMonth == YearMonth.now() }
 
         val freeToSpend = if (overview.incomes.isNotEmpty() || bills.isNotEmpty() || overview.accounts.isNotEmpty()) {
@@ -69,6 +69,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 bills = bills,
                 incomes = overview.incomes,
                 payments = payments,
+                skips = overview.billCycleSkips,
                 includePriorOverdue = includePriorOverdue
             )
         } else {

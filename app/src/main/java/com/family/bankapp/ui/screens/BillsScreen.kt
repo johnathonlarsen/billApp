@@ -52,6 +52,7 @@ import com.family.bankapp.ui.viewmodel.BillListItem
 import com.family.bankapp.ui.viewmodel.BillsViewModel
 import com.family.bankapp.util.BillCsvImportResult
 import com.family.bankapp.util.BillSchedule
+import com.family.bankapp.util.MonthBillEntry
 import com.family.bankapp.util.MoneyFormatter
 import java.time.LocalDate
 import java.time.Month
@@ -73,6 +74,7 @@ fun BillsScreen(
     var payTarget by remember { mutableStateOf<BillListItem?>(null) }
     var payCycleDate by remember { mutableStateOf<LocalDate?>(null) }
     var undoTarget by remember { mutableStateOf<BillListItem?>(null) }
+    var skipTarget by remember { mutableStateOf<MonthBillEntry?>(null) }
     var importResult by remember { mutableStateOf<BillCsvImportResult?>(null) }
     val context = LocalContext.current
 
@@ -131,7 +133,8 @@ fun BillsScreen(
                             payTarget = item
                             payCycleDate = entry.dueDate
                         }
-                    }
+                    },
+                    onRemoveBillFromMonth = { skipTarget = it }
                 )
             }
 
@@ -206,6 +209,31 @@ fun BillsScreen(
                 }
             )
         }
+    }
+
+    skipTarget?.let { entry ->
+        val cycleLabel = BillSchedule.formatCycleLabel(entry.bill, entry.dueDate)
+        AlertDialog(
+            onDismissRequest = { skipTarget = null },
+            title = { Text("Remove from $cycleLabel?") },
+            text = {
+                Text(
+                    "Remove \"${entry.bill.name}\" from $cycleLabel only? " +
+                        "The bill stays on your list and will still appear in other months."
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    vm.skipBillCycle(entry.bill.id, entry.dueDate)
+                    skipTarget = null
+                }) {
+                    Text("Remove")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { skipTarget = null }) { Text("Cancel") }
+            }
+        )
     }
 
     importResult?.let { result ->

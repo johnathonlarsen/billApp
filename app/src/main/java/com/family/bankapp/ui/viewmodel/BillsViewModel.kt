@@ -58,9 +58,10 @@ class BillsViewModel(application: Application) : AndroidViewModel(application) {
 
     val monthTimeline = combine(
         repository.observeActiveBills(),
-        repository.observeAllPayments()
-    ) { bills, payments ->
-        MonthTimeline.build(bills, payments)
+        repository.observeAllPayments(),
+        repository.observeBillCycleSkips()
+    ) { bills, payments, skips ->
+        MonthTimeline.build(bills, payments, skips)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun billListItemFor(billId: Long, billItems: List<BillListItem>): BillListItem? =
@@ -111,6 +112,12 @@ class BillsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteBill(bill: BillEntity) {
         viewModelScope.launch { repository.deleteBill(bill) }
+    }
+
+    fun skipBillCycle(billId: Long, cycleDueDate: LocalDate) {
+        viewModelScope.launch {
+            repository.skipBillCycle(billId, cycleDueDate)
+        }
     }
 
     fun deactivateBill(bill: BillEntity) {

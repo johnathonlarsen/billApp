@@ -8,8 +8,10 @@ import com.family.bankapp.data.entity.AccountEntity
 import com.family.bankapp.data.entity.BankEntity
 import com.family.bankapp.data.entity.BillEntity
 import com.family.bankapp.data.entity.PaymentRecordEntity
+import com.family.bankapp.data.dao.BillCycleSkipDao
 import com.family.bankapp.data.dao.IncomeDao
 import com.family.bankapp.data.dao.PlaidTransactionDao
+import com.family.bankapp.data.entity.BillCycleSkipEntity
 import com.family.bankapp.data.entity.IncomeEntity
 import com.family.bankapp.data.entity.PlaidTransactionEntity
 import com.family.bankapp.data.model.ConnectionType
@@ -27,7 +29,8 @@ class BankRepository(
     private val billDao: BillDao,
     private val paymentRecordDao: PaymentRecordDao,
     private val plaidTransactionDao: PlaidTransactionDao,
-    private val incomeDao: IncomeDao
+    private val incomeDao: IncomeDao,
+    private val billCycleSkipDao: BillCycleSkipDao
 ) {
     companion object {
         const val MAX_BANKS = 3
@@ -47,15 +50,21 @@ class BankRepository(
 
     fun observeAllPayments(): Flow<List<PaymentRecordEntity>> = paymentRecordDao.observeAll()
     fun observeActiveIncomes(): Flow<List<IncomeEntity>> = incomeDao.observeActive()
+    fun observeBillCycleSkips(): Flow<List<BillCycleSkipEntity>> = billCycleSkipDao.observeAll()
 
     fun observeOverview(): Flow<OverviewData> = combine(
-        bankDao.observeAll(),
-        accountDao.observeAll(),
-        billDao.observeActive(),
-        paymentRecordDao.observeAll(),
-        incomeDao.observeActive()
-    ) { banks, accounts, bills, payments, incomes ->
-        OverviewData(banks, accounts, bills, payments, incomes)
+        combine(
+            bankDao.observeAll(),
+            accountDao.observeAll(),
+            billDao.observeActive()
+        ) { banks, accounts, bills -> Triple(banks, accounts, bills) },
+        combine(
+            paymentRecordDao.observeAll(),
+            incomeDao.observeActive(),
+            billCycleSkipDao.observeAll()
+        ) { payments, incomes, skips -> Triple(payments, incomes, skips) }
+    ) { (banks, accounts, bills), (payments, incomes, skips) ->
+        OverviewData(banks, accounts, bills, payments, incomes, skips)
     }
 
     suspend fun getBank(id: Long): BankEntity? = bankDao.getById(id)
@@ -250,6 +259,15 @@ class BankRepository(
     suspend fun updateBill(bill: BillEntity) = billDao.update(bill)
     suspend fun deleteBill(bill: BillEntity) = billDao.delete(bill)
 
+    suspend fun skipBillCycle(billId: Long, cycleDueDate: LocalDate) {
+        billCycleSkipDao.insert(
+            BillCycleSkipEntity(
+                billId = billId,
+                cycleDueDateMillis = BillSchedule.toCycleMillis(cycleDueDate)
+            )
+        )
+    }
+
     suspend fun addIncome(income: IncomeEntity): Long = incomeDao.insert(income)
     suspend fun updateIncome(income: IncomeEntity) = incomeDao.update(income)
     suspend fun deleteIncome(income: IncomeEntity) = incomeDao.delete(income)
@@ -298,5 +316,6 @@ data class OverviewData(
     val accounts: List<AccountEntity>,
     val bills: List<BillEntity>,
     val payments: List<PaymentRecordEntity> = emptyList(),
-    val incomes: List<IncomeEntity> = emptyList()
+    val incomes: List<IncomeEntity> = emptyList(),
+    val billCycleSkips: List<BillCycleSkipEntity> = emptyList()
 )

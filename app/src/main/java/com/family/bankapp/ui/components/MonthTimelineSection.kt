@@ -17,7 +17,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -52,7 +54,8 @@ fun MonthTimelineSection(
     expandedMonth: YearMonth?,
     onMonthClick: (YearMonth) -> Unit,
     modifier: Modifier = Modifier,
-    onMarkBillPaid: ((MonthBillEntry) -> Unit)? = null
+    onMarkBillPaid: ((MonthBillEntry) -> Unit)? = null,
+    onRemoveBillFromMonth: ((MonthBillEntry) -> Unit)? = null
 ) {
     Column(
         modifier = modifier
@@ -89,7 +92,8 @@ fun MonthTimelineSection(
             months.find { it.yearMonth == selected }?.let { overview ->
                 MonthDetailCard(
                     overview = overview,
-                    onMarkBillPaid = onMarkBillPaid
+                    onMarkBillPaid = onMarkBillPaid,
+                    onRemoveBillFromMonth = onRemoveBillFromMonth
                 )
             }
         }
@@ -144,7 +148,8 @@ private fun MonthPill(
 @Composable
 private fun MonthDetailCard(
     overview: MonthOverview,
-    onMarkBillPaid: ((MonthBillEntry) -> Unit)?
+    onMarkBillPaid: ((MonthBillEntry) -> Unit)?,
+    onRemoveBillFromMonth: ((MonthBillEntry) -> Unit)?
 ) {
     val dateFormatter = DateTimeFormatter.ofPattern("MMM d")
     val containerColor = when (overview.status) {
@@ -215,25 +220,38 @@ private fun MonthDetailCard(
                                     MoneyFormatter.format(entry.bill.amountCents),
                                     fontWeight = FontWeight.SemiBold
                                 )
-                                if (entry.isPaid) {
-                                    Text(
-                                        "Paid",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = PillGreen
-                                    )
-                                } else if (onMarkBillPaid != null) {
-                                    Button(
-                                        onClick = { onMarkBillPaid(entry) },
-                                        modifier = Modifier.padding(top = 4.dp)
-                                    ) {
-                                        Text("Mark paid", style = MaterialTheme.typography.labelSmall)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    if (!entry.isPaid && onRemoveBillFromMonth != null) {
+                                        IconButton(onClick = { onRemoveBillFromMonth(entry) }) {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = "Remove from this month"
+                                            )
+                                        }
                                     }
-                                } else {
-                                    Text(
-                                        "Unpaid",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = PillYellow
-                                    )
+                                    if (entry.isPaid) {
+                                        Text(
+                                            "Paid",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = PillGreen
+                                        )
+                                    } else if (onMarkBillPaid != null) {
+                                        Button(
+                                            onClick = { onMarkBillPaid(entry) },
+                                            modifier = Modifier.padding(top = 4.dp)
+                                        ) {
+                                            Text("Mark paid", style = MaterialTheme.typography.labelSmall)
+                                        }
+                                    } else {
+                                        Text(
+                                            "Unpaid",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = PillYellow
+                                        )
+                                    }
                                 }
                             }
                         }

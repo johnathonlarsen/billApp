@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.family.bankapp.BankAppApplication
 import com.family.bankapp.FamilyAppConfig
+import com.family.bankapp.data.entity.BillEntity
 import com.family.bankapp.data.model.BillCategory
 import com.family.bankapp.data.model.BillRecurrence
 import com.family.bankapp.ui.viewmodel.BanksViewModel
@@ -73,12 +74,15 @@ fun BillEditScreen(
     var categoryExpanded by remember { mutableStateOf(false) }
     var accountExpanded by remember { mutableStateOf(false) }
     var loaded by remember { mutableStateOf(billId == null) }
+    var loadedBill by remember { mutableStateOf<BillEntity?>(null) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
     if (billId != null && !loaded) {
         LaunchedEffect(billId) {
             val app = banksVm.getApplication<BankAppApplication>()
             val bill = app.repository.getBill(billId)
             if (bill != null) {
+                loadedBill = bill
                 name = bill.name
                 amountText = MoneyFormatter.format(bill.amountCents)
                 recurrence = bill.recurrence
@@ -261,7 +265,48 @@ fun BillEditScreen(
                     Text("Save bill")
                 }
             }
+            if (billId != null) {
+                item {
+                    OutlinedButton(
+                        onClick = { showDeleteConfirm = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "Delete bill",
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
         }
+    }
+
+    if (showDeleteConfirm && loadedBill != null) {
+        val bill = loadedBill!!
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete ${bill.name}?") },
+            text = {
+                Text(
+                    "This permanently removes the bill from every month, including payment history. " +
+                        "This cannot be undone."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        vm.deleteBill(bill)
+                        showDeleteConfirm = false
+                        onBack()
+                    }
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 

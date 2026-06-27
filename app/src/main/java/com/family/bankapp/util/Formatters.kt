@@ -139,6 +139,16 @@ object BillSchedule {
         val cycleMillis = toCycleMillis(cycleDueDate)
         return payments.filter { it.billId == billId }.find { it.cycleDueDateMillis == cycleMillis }
     }
+
+    fun isCycleSkipped(
+        skips: List<com.family.bankapp.data.entity.BillCycleSkipEntity>,
+        billId: Long,
+        cycleDueDate: LocalDate
+    ): Boolean {
+        val cycleMillis = toCycleMillis(cycleDueDate)
+        return skips.any { it.billId == billId && it.cycleDueDateMillis == cycleMillis }
+    }
+
     fun nextDueDate(bill: BillEntity, today: LocalDate = LocalDate.now()): LocalDate {
         return when (bill.recurrence) {
             BillRecurrence.ONE_TIME -> {
