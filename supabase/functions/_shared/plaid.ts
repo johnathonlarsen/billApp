@@ -1,9 +1,21 @@
 import { Configuration, PlaidApi, PlaidEnvironments, Products, CountryCode } from 'npm:plaid@30.0.0';
 
+const ALLOWED_PLAID_ENVS = ['production'] as const;
+
+export function getPlaidEnv(): string {
+  const envName = (Deno.env.get('PLAID_ENV') ?? 'production').toLowerCase();
+  if (!ALLOWED_PLAID_ENVS.includes(envName as (typeof ALLOWED_PLAID_ENVS)[number])) {
+    throw new Error(
+      `PLAID_ENV must be production (got "${envName}"). Sandbox is disabled for this app.`,
+    );
+  }
+  return envName;
+}
+
 export function createPlaidClient(): PlaidApi {
   const clientId = Deno.env.get('PLAID_CLIENT_ID');
   const secret = Deno.env.get('PLAID_SECRET');
-  const envName = (Deno.env.get('PLAID_ENV') ?? 'sandbox').toLowerCase();
+  const envName = getPlaidEnv();
 
   if (!clientId || !secret) {
     throw new Error('Set PLAID_CLIENT_ID and PLAID_SECRET in Supabase Edge Function secrets');

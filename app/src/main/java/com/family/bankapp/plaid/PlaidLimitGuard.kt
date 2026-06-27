@@ -1,11 +1,5 @@
 package com.family.bankapp.plaid
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
-
 /** Plaid Trial: 10 Production Items lifetime; removing Items does NOT free slots. */
 object PlaidCompliance {
     const val PLAID_PRIVACY_URL = "https://plaid.com/legal/#end-user-privacy-policy"
@@ -52,7 +46,7 @@ data class PlaidUsage(
     val trialNote: String? = null,
     val source: UsageSource
 ) {
-    enum class UsageSource { SUPABASE, SERVER, LOCAL_ONLY, UNAVAILABLE }
+    enum class UsageSource { SUPABASE, LOCAL_ONLY, UNAVAILABLE }
 
     val summary: String get() = "$used / $limit Plaid slots used (Trial)"
 }
@@ -75,33 +69,6 @@ data class PlaidConnectCheck(
     val blockReason: String? = null,
     val confirmMessage: String? = null
 )
-
-object PlaidRelayClient {
-    suspend fun fetchUsage(serverUrl: String): Result<PlaidUsage> = withContext(Dispatchers.IO) {
-        runCatching {
-            val base = serverUrl.trim().removeSuffix("/")
-            if (base.isBlank()) error("Server URL not configured")
-            val conn = (URL("$base/plaid/usage").openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 8000
-                readTimeout = 8000
-            }
-            val code = conn.responseCode
-            val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
-                .bufferedReader().readText()
-            if (code !in 200..299) error("Server returned $code")
-            val json = JSONObject(body)
-            PlaidUsage(
-                limit = json.getInt("limit"),
-                used = json.getInt("used"),
-                remaining = json.getInt("remaining"),
-                atLimit = json.getBoolean("at_limit"),
-                trialNote = json.optString("trial_note").takeIf { it.isNotBlank() },
-                source = PlaidUsage.UsageSource.SERVER
-            )
-        }
-    }
-}
 
 object PlaidLimitGuard {
     const val WARN_WHEN_REMAINING_AT_OR_BELOW = 2
