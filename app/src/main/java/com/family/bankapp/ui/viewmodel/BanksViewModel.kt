@@ -228,6 +228,20 @@ class BanksViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun disconnectPlaidLink(bankId: Long, onResult: (Result<String>) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val itemId = repository.disconnectPlaidLink(bankId)
+                    ?: return@launch onResult(
+                        Result.failure(IllegalStateException("This bank is not connected via Plaid"))
+                    )
+                onResult(Result.success(itemId))
+            } finally {
+                app.requestPlaidUsageRefresh()
+            }
+        }
+    }
+
     fun syncPlaidBank(bankId: Long, onResult: (Result<PlaidBankSyncResult>) -> Unit) {
         viewModelScope.launch {
             try {

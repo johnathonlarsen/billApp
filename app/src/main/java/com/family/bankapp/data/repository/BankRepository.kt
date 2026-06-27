@@ -126,6 +126,19 @@ class BankRepository(
             )
         )
     }
+
+    /** Unlinks Plaid on this phone only — vault token, accounts, and transactions are kept for restore. */
+    suspend fun disconnectPlaidLink(bankId: Long): String? {
+        val bank = bankDao.getById(bankId) ?: return null
+        val itemId = bank.plaidItemId ?: return null
+        bankDao.update(
+            bank.copy(
+                plaidItemId = null,
+                connectionType = ConnectionType.MANUAL
+            )
+        )
+        return itemId
+    }
     suspend fun deleteBank(bank: BankEntity) = bankDao.delete(bank)
 
     suspend fun markBankConnected(bankId: Long) {

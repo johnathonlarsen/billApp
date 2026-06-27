@@ -190,6 +190,9 @@ fun BankDetailScreen(
     var restorableItems by remember { mutableStateOf<List<PlaidRestorableItem>>(emptyList()) }
     var restorableLoading by remember { mutableStateOf(false) }
     var restoreBusyItemId by remember { mutableStateOf<String?>(null) }
+    var preferredRestoreItemId by remember { mutableStateOf<String?>(null) }
+    var showDisconnectConfirm by remember { mutableStateOf(false) }
+    var disconnectBusy by remember { mutableStateOf(false) }
     var showReconnectPasswordDialog by remember { mutableStateOf(false) }
     var reconnectPassword by remember { mutableStateOf("") }
     var reconnectPasswordError by remember { mutableStateOf<String?>(null) }
@@ -219,9 +222,13 @@ fun BankDetailScreen(
     }
     val isPlaidConnected = !item?.bank?.plaidItemId.isNullOrBlank()
     val hasUnrestoredLinks = restorableItems.isNotEmpty()
-    val matchingRestore = remember(item?.bank?.name, restorableItems) {
-        val bankName = item?.bank?.name ?: return@remember null
-        restorableItems.firstOrNull { PlaidNameMatcher.likelySameBank(bankName, it.institutionName) }
+    val matchingRestore = remember(item?.bank?.name, restorableItems, preferredRestoreItemId) {
+        preferredRestoreItemId?.let { id ->
+            restorableItems.firstOrNull { it.itemId == id }
+        } ?: run {
+            val bankName = item?.bank?.name ?: return@remember null
+            restorableItems.firstOrNull { PlaidNameMatcher.likelySameBank(bankName, it.institutionName) }
+        }
     }
 
     LaunchedEffect(bankId, isPlaidConnected) {
@@ -330,10 +337,17 @@ fun BankDetailScreen(
                                         }
                                     }
                                 },
-                                enabled = !plaidSyncBusy && !plaidLinkBusy,
+                                enabled = !plaidSyncBusy && !plaidLinkBusy && !disconnectBusy,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(if (plaidSyncBusy) "Syncing…" else "Sync from Plaid")
+                            }
+                            OutlinedButton(
+                                onClick = { showDisconnectConfirm = true },
+                                enabled = !plaidSyncBusy && !plaidLinkBusy && !disconnectBusy,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(if (disconnectBusy) "Disconnecting…" else "Disconnect Plaid")
                             }
                         } else {
                             Text(
@@ -353,13 +367,45 @@ fun BankDetailScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary
                                 )
-                                restorableItems.forEach { link ->
+                                matchingRestore?.let { link ->
+                                    Button(
+                                        onClick = {
+                                            restoreBusyItemId = link.itemId
+                                            vm.restorePlaidLink(bankId, link.itemId) { result ->
+                                                restoreBusyItemId = null
+                                                result.onSuccess { sync ->
+                                                    preferredRestoreItemId = null
+                                                    plaidStatusMessage = buildString {
+                                                        append("Restored ${link.institutionName}.\n\n")
+                                                        append("Synced ${sync.accountsImported} account(s)")
+                                                        append(" and ${sync.transactionsAdded} transaction(s).")
+                                                    }
+                                                }.onFailure { e ->
+                                                    plaidStatusMessage = e.message ?: "Could not restore link"
+                                                }
+                                            }
+                                        },
+                                        enabled = restoreBusyItemId == null && !plaidLinkBusy,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            if (restoreBusyItemId == link.itemId) {
+                                                "Restoring…"
+                                            } else {
+                                                "Restore saved link (${link.institutionName})"
+                                            }
+                                        )
+                                    }
+                                }
+                                val otherRestorable = restorableItems.filter { it.itemId != matchingRestore?.itemId }
+                                otherRestorable.forEach { link ->
                                     OutlinedButton(
                                         onClick = {
                                             restoreBusyItemId = link.itemId
                                             vm.restorePlaidLink(bankId, link.itemId) { result ->
                                                 restoreBusyItemId = null
                                                 result.onSuccess { sync ->
+                                                    preferredRestoreItemId = null
                                                     plaidStatusMessage = buildString {
                                                         append("Restored ${link.institutionName}.\n\n")
                                                         append("Synced ${sync.accountsImported} account(s)")
@@ -518,8 +564,18 @@ fun BankDetailScreen(
                 }
             }
 
-            if (isPlaidConnected) {
+            if (isPlaidConnected || plaidTransactions.isNotEmpty()) {
                 item { SectionHeader("Recent transactions") }
+                if (!isPlaidConnected && plaidTransactions.isNotEmpty()) {
+                    item {
+                        Text(
+                            "Cached from your last Plaid sync — restore the saved link to refresh.",
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
                 if (plaidTransactions.isEmpty()) {
                     item {
                         Text(
@@ -583,6 +639,49 @@ fun BankDetailScreen(
                 )
                 billFromTransaction = null
                 plaidStatusMessage = "\"${draft.name}\" added to your bills."
+            }
+        )
+    }
+
+    if (showDisconnectConfirm) {
+        AlertDialog(
+            onDismissRequest = { if (!disconnectBusy) showDisconnectConfirm = false },
+            title = { Text("Disconnect Plaid?") },
+            text = {
+                Text(
+                    "This unlinks Plaid on this phone only. Accounts, balances, and transactions stay here. " +
+                        "Your saved link remains on the server — use Restore saved link to reconnect without a new Trial slot."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        disconnectBusy = true
+                        vm.disconnectPlaidLink(bankId) { result ->
+                            disconnectBusy = false
+                            showDisconnectConfirm = false
+                            result.onSuccess { itemId ->
+                                preferredRestoreItemId = itemId
+                                plaidStatusMessage =
+                                    "Plaid disconnected. Accounts and transactions are still on this phone.\n\n" +
+                                    "Tap Restore saved link below to reconnect without relinking."
+                            }.onFailure { e ->
+                                plaidStatusMessage = e.message ?: "Could not disconnect Plaid"
+                            }
+                        }
+                    },
+                    enabled = !disconnectBusy
+                ) {
+                    Text(if (disconnectBusy) "Disconnecting…" else "Disconnect")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showDisconnectConfirm = false },
+                    enabled = !disconnectBusy
+                ) {
+                    Text("Cancel")
+                }
             }
         )
     }
