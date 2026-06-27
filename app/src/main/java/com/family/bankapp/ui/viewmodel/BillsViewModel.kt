@@ -138,4 +138,13 @@ class BillsViewModel(application: Application) : AndroidViewModel(application) {
             onResult(result)
         }
     }
+
+    fun exportToCsv(onReady: (String) -> Unit) {
+        viewModelScope.launch {
+            val bills = repository.observeActiveBills().first()
+            val banks = repository.observeBanks().first()
+            val accounts = repository.observeAccounts().first()
+            onReady(BillCsvImporter.export(bills, banks, accounts))
+        }
+    }
 }

@@ -341,14 +341,14 @@ fun SettingsScreen(
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("CSV bill import", fontWeight = FontWeight.Bold)
+                    Text("CSV bill import & export", fontWeight = FontWeight.Bold)
                     Text(
                         "Columns: name, amount, due_day, category, recurrence, pay_from, reminder_days, notes",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Text(
-                        "pay_from uses Bank · Account (add banks first). " +
-                            "Use Import on the Bills tab to pick a .csv file.",
+                        "Use Export CSV or Import CSV on the Bills tab. " +
+                            "pay_from uses Bank · Account (add banks first).",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

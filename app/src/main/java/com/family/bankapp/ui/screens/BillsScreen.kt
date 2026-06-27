@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -76,7 +77,29 @@ fun BillsScreen(
     var undoTarget by remember { mutableStateOf<BillListItem?>(null) }
     var skipTarget by remember { mutableStateOf<MonthBillEntry?>(null) }
     var importResult by remember { mutableStateOf<BillCsvImportResult?>(null) }
+    var pendingExportCsv by remember { mutableStateOf<String?>(null) }
+    var exportMessage by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        val csv = pendingExportCsv
+        pendingExportCsv = null
+        if (uri == null || csv == null) return@rememberLauncherForActivityResult
+        try {
+            context.contentResolver.openOutputStream(uri)?.use { stream ->
+                stream.write(csv.toByteArray(Charsets.UTF_8))
+            } ?: run {
+                exportMessage = "Could not save file"
+                return@rememberLauncherForActivityResult
+            }
+            val rowCount = csv.lines().count { it.isNotBlank() } - 1
+            exportMessage = "Exported $rowCount bill(s)"
+        } catch (e: Exception) {
+            exportMessage = e.message ?: "Export failed"
+        }
+    }
 
     val csvLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -107,16 +130,34 @@ fun BillsScreen(
                 Column(Modifier.padding(16.dp)) {
                     Text("Bills", style = MaterialTheme.typography.headlineSmall)
                     Text(
-                        "Add bills manually or import from a CSV file",
+                        "Add bills manually or import/export CSV",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    OutlinedButton(
-                        onClick = { csvLauncher.launch(arrayOf("text/*", "text/csv", "application/csv", "*/*")) },
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.padding(top = 8.dp)
                     ) {
-                        Icon(Icons.Default.Upload, contentDescription = null)
-                        Text("Import bills from CSV")
+                        OutlinedButton(
+                            onClick = {
+                                vm.exportToCsv { csv ->
+                                    pendingExportCsv = csv
+                                    exportLauncher.launch("family-bank-bills-${LocalDate.now()}.csv")
+                                }
+                            },
+                            enabled = bills.isNotEmpty()
+                        ) {
+                            Icon(Icons.Default.Download, contentDescription = null)
+                            Text("Export CSV")
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                csvLauncher.launch(arrayOf("text/*", "text/csv", "application/csv", "*/*"))
+                            }
+                        ) {
+                            Icon(Icons.Default.Upload, contentDescription = null)
+                            Text("Import CSV")
+                        }
                     }
                 }
             }
@@ -232,6 +273,17 @@ fun BillsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { skipTarget = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    exportMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { exportMessage = null },
+            title = { Text("Export bills") },
+            text = { Text(message) },
+            confirmButton = {
+                Button(onClick = { exportMessage = null }) { Text("OK") }
             }
         )
     }

@@ -5,6 +5,7 @@ import com.family.bankapp.data.entity.BankEntity
 import com.family.bankapp.data.entity.BillEntity
 import com.family.bankapp.data.model.BillCategory
 import com.family.bankapp.data.model.BillRecurrence
+import java.util.Locale
 
 data class BillCsvImportResult(
     val imported: List<BillEntity>,
@@ -51,6 +52,30 @@ object BillCsvImporter {
         return BillCsvImportResult(imported, errors)
     }
 
+    fun export(
+        bills: List<BillEntity>,
+        banks: List<BankEntity>,
+        accounts: List<AccountEntity>
+    ): String {
+        val payFromLabels = buildPayFromLabelMap(banks, accounts)
+        val header = "name,amount,due_day,category,recurrence,pay_from,reminder_days,notes"
+        val rows = bills
+            .sortedBy { it.name.lowercase() }
+            .map { bill ->
+                listOf(
+                    escapeCsvField(bill.name),
+                    escapeCsvField(formatAmount(bill.amountCents)),
+                    bill.dueDayOfMonth.toString(),
+                    escapeCsvField(bill.category.label),
+                    escapeCsvField(bill.recurrence.label),
+                    escapeCsvField(bill.linkedAccountId?.let { payFromLabels[it] }.orEmpty()),
+                    bill.reminderDaysBefore.toString(),
+                    escapeCsvField(bill.notes)
+                ).joinToString(",")
+            }
+        return (listOf(header) + rows).joinToString("\n")
+    }
+
     fun templateCsv(): String = """
         name,amount,due_day,category,recurrence,pay_from,reminder_days,notes
         Mortgage,1850.00,1,Housing,Monthly,Capital One · 360 Checking,5,
@@ -75,6 +100,23 @@ object BillCsvImporter {
             map[normalize(label)] = account.id
         }
         return map
+    }
+
+    private fun buildPayFromLabelMap(
+        banks: List<BankEntity>,
+        accounts: List<AccountEntity>
+    ): Map<Long, String> =
+        accounts.mapNotNull { account ->
+            val bank = banks.find { it.id == account.bankId } ?: return@mapNotNull null
+            account.id to "${bank.name} · ${account.name}"
+        }.toMap()
+
+    private fun formatAmount(amountCents: Long): String =
+        String.format(Locale.US, "%.2f", amountCents / 100.0)
+
+    private fun escapeCsvField(value: String): String {
+        if (value.none { it == ',' || it == '"' || it == '\n' || it == '\r' }) return value
+        return "\"${value.replace("\"", "\"\"")}\""
     }
 
     private fun normalize(s: String) = s.lowercase().replace(Regex("\\s+"), " ").trim()
