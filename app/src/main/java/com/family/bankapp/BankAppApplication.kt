@@ -6,6 +6,7 @@ import com.family.bankapp.data.repository.BankRepository
 import com.family.bankapp.data.settings.SettingsRepository
 import com.family.bankapp.notifications.NotificationHelper
 import com.family.bankapp.notifications.ReminderScheduler
+import com.family.bankapp.update.AppUpdateDownloadCoordinator
 
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -24,8 +25,12 @@ class BankAppApplication : Application() {
         _plaidUsageRefreshRequests.tryEmit(Unit)
     }
 
+    lateinit var appUpdateDownloadCoordinator: AppUpdateDownloadCoordinator
+        private set
+
     override fun onCreate() {
         super.onCreate()
+        appUpdateDownloadCoordinator = AppUpdateDownloadCoordinator(this)
         val db = AppDatabase.get(this)
         repository = BankRepository(
             db.bankDao(),

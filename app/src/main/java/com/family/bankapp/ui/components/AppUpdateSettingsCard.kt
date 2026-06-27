@@ -119,6 +119,14 @@ fun AppUpdateSettingsCard(vm: AppUpdateViewModel) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
+                    if (activeManifestAvailable(s.message)) {
+                        Button(
+                            onClick = vm::updateNow,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Resume download")
+                        }
+                    }
                     if (!AppUpdateInstaller.canInstallPackages(context)) {
                         OutlinedButton(
                             onClick = { AppUpdateInstaller.openInstallPermissionSettings(context) },
@@ -155,3 +163,8 @@ fun AppUpdateSettingsCard(vm: AppUpdateViewModel) {
         }
     }
 }
+
+private fun activeManifestAvailable(message: String): Boolean =
+    message.contains("resume", ignoreCase = true) ||
+        message.contains("paused", ignoreCase = true) ||
+        message.contains("incomplete", ignoreCase = true)
