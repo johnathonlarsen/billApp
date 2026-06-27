@@ -241,8 +241,8 @@ private fun FreeToSpendCard(fts: FreeToSpendSnapshot) {
             )
             Text(
                 if (isShort) {
-                    "${MoneyFormatter.format(-fts.freeToSpendCents)} more owed than your balance covers " +
-                        "(${fts.currentMonthLabel} + prior unpaid)"
+                    "${MoneyFormatter.format(-fts.freeToSpendCents)} more owed than " +
+                        if (fts.usesIncomeAsSpendingPool) "your monthly income covers" else "your balance covers"
                 } else {
                     "After ${fts.currentMonthLabel} bills still owed"
                 },
@@ -250,14 +250,25 @@ private fun FreeToSpendCard(fts: FreeToSpendSnapshot) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                "Balance ${MoneyFormatter.format(fts.liquidBalanceCents)} − " +
-                    "bills owed ${MoneyFormatter.format(fts.totalCommittedBillsCents)} " +
-                    "(${MoneyFormatter.format(fts.currentMonthUnpaidCents)} this month" +
-                    if (fts.priorOverdueUnpaidCents > 0) {
-                        ", ${MoneyFormatter.format(fts.priorOverdueUnpaidCents)} prior"
-                    } else {
-                        ""
-                    } + ")",
+                if (fts.usesIncomeAsSpendingPool) {
+                    "Monthly income ${MoneyFormatter.format(fts.spendingPoolCents)} − " +
+                        "bills owed ${MoneyFormatter.format(fts.totalCommittedBillsCents)} " +
+                        "(${MoneyFormatter.format(fts.currentMonthUnpaidCents)} this month" +
+                        if (fts.priorOverdueUnpaidCents > 0) {
+                            ", ${MoneyFormatter.format(fts.priorOverdueUnpaidCents)} prior"
+                        } else {
+                            ""
+                        } + ") · no account balance synced"
+                } else {
+                    "Balance ${MoneyFormatter.format(fts.spendingPoolCents)} − " +
+                        "bills owed ${MoneyFormatter.format(fts.totalCommittedBillsCents)} " +
+                        "(${MoneyFormatter.format(fts.currentMonthUnpaidCents)} this month" +
+                        if (fts.priorOverdueUnpaidCents > 0) {
+                            ", ${MoneyFormatter.format(fts.priorOverdueUnpaidCents)} prior"
+                        } else {
+                            ""
+                        } + ")"
+                },
                 style = MaterialTheme.typography.bodySmall
             )
             if (fts.priorOverdueUnpaidCents > 0 && fts.includePriorOverdue) {

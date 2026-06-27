@@ -25,6 +25,9 @@ object RecurrenceNormalizer {
 
 data class FreeToSpendSnapshot(
     val liquidBalanceCents: Long,
+    /** Checking/savings pool used for free-to-spend (balance, or income when no balance). */
+    val spendingPoolCents: Long,
+    val usesIncomeAsSpendingPool: Boolean,
     val monthlyIncomeCents: Long,
     val monthlyBillsCents: Long,
     val plannedFreeMonthlyCents: Long,
@@ -60,10 +63,14 @@ object FreeToSpendCalculator {
             0L
         }
         val committed = currentMonthUnpaid + priorOverdue
-        val freeToSpend = liquidBalance - committed
+        val usesIncomeAsSpendingPool = liquidBalance <= 0L && monthlyIncome > 0L
+        val spendingPool = if (liquidBalance > 0L) liquidBalance else monthlyIncome
+        val freeToSpend = spendingPool - committed
 
         return FreeToSpendSnapshot(
             liquidBalanceCents = liquidBalance,
+            spendingPoolCents = spendingPool,
+            usesIncomeAsSpendingPool = usesIncomeAsSpendingPool,
             monthlyIncomeCents = monthlyIncome,
             monthlyBillsCents = monthlyBills,
             plannedFreeMonthlyCents = plannedFree,
