@@ -12,6 +12,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -28,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.family.bankapp.BankAppApplication
+import com.family.bankapp.data.entity.IncomeEntity
 import com.family.bankapp.data.model.BillRecurrence
 import com.family.bankapp.ui.viewmodel.BanksViewModel
 import com.family.bankapp.ui.viewmodel.IncomeViewModel
@@ -54,12 +57,15 @@ fun IncomeEditScreen(
     var recurrenceExpanded by remember { mutableStateOf(false) }
     var accountExpanded by remember { mutableStateOf(false) }
     var loaded by remember { mutableStateOf(incomeId == null) }
+    var loadedIncome by remember { mutableStateOf<IncomeEntity?>(null) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
     if (incomeId != null && !loaded) {
         LaunchedEffect(incomeId) {
             val app = banksVm.getApplication<BankAppApplication>()
             val income = app.repository.getIncome(incomeId)
             if (income != null) {
+                loadedIncome = income
                 name = income.name
                 amountText = MoneyFormatter.format(income.amountCents)
                 recurrence = income.recurrence
@@ -192,13 +198,10 @@ fun IncomeEditScreen(
                     onClick = {
                         val amountCents = MoneyFormatter.parse(amountText) ?: return@Button
                         val day = dueDay.toIntOrNull()?.coerceIn(1, 28) ?: 1
-                        val dueDateMillis = if (recurrence == BillRecurrence.WEEKLY ||
-                            recurrence == BillRecurrence.BIWEEKLY ||
-                            recurrence == BillRecurrence.YEARLY
-                        ) {
-                            LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                        } else {
-                            null
+                        val dueDateMillis = when (recurrence) {
+                            BillRecurrence.MONTHLY -> null
+                            else -> loadedIncome?.dueDateMillis?.takeIf { incomeId != null }
+                                ?: LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
                         }
                         vm.saveIncome(
                             id = incomeId ?: 0L,
@@ -218,6 +221,46 @@ fun IncomeEditScreen(
                     Text("Save income")
                 }
             }
+            if (incomeId != null) {
+                item {
+                    OutlinedButton(
+                        onClick = { showDeleteConfirm = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "Delete income",
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
         }
+    }
+
+    if (showDeleteConfirm && loadedIncome != null) {
+        val income = loadedIncome!!
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete ${income.name}?") },
+            text = {
+                Text(
+                    "This permanently removes this income source. Free-to-spend on Home will no longer include it."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        vm.deleteIncome(income)
+                        showDeleteConfirm = false
+                        onBack()
+                    }
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+            }
+        )
     }
 }
