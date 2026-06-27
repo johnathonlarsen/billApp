@@ -64,14 +64,10 @@ import java.util.Locale
 fun BillsScreen(
     padding: PaddingValues,
     onAddBill: () -> Unit,
-    onEditBill: (Long) -> Unit,
-    onAddIncome: () -> Unit,
-    onEditIncome: (Long) -> Unit
+    onEditBill: (Long) -> Unit
 ) {
     val vm: BillsViewModel = viewModel()
-    val incomeVm: com.family.bankapp.ui.viewmodel.IncomeViewModel = viewModel()
     val bills by vm.bills.collectAsState()
-    val incomes by incomeVm.incomes.collectAsState()
     val monthTimeline by vm.monthTimeline.collectAsState()
     var expandedMonth by remember { mutableStateOf<YearMonth?>(YearMonth.now()) }
     var payTarget by remember { mutableStateOf<BillListItem?>(null) }
@@ -119,67 +115,6 @@ fun BillsScreen(
                     ) {
                         Icon(Icons.Default.Upload, contentDescription = null)
                         Text("Import bills from CSV")
-                    }
-                }
-            }
-
-            item {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "Income sources",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    TextButton(onClick = onAddIncome) {
-                        Icon(Icons.Default.Add, contentDescription = null)
-                        Text("Add")
-                    }
-                }
-            }
-            if (incomes.isEmpty()) {
-                item {
-                    Text(
-                        "Add paychecks and other income for free-to-spend on Home.",
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            } else {
-                items(incomes, key = { it.income.id }) { item ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .clickable { onEditIncome(item.income.id) }
-                    ) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(item.income.name, fontWeight = FontWeight.SemiBold)
-                                MoneyText(item.income.amountCents)
-                            }
-                            Text(
-                                "${item.income.recurrence.label} · ~${MoneyFormatter.format(item.monthlyEquivalentCents)}/mo",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            item.linkedAccountLabel?.let { label ->
-                                Text(
-                                    "Deposits to: $label",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
                     }
                 }
             }

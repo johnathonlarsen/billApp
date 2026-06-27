@@ -4,6 +4,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Settings
@@ -38,6 +39,7 @@ import com.family.bankapp.ui.screens.BillsScreen
 import com.family.bankapp.ui.screens.BanksScreen
 import com.family.bankapp.ui.screens.DashboardScreen
 import com.family.bankapp.ui.screens.IncomeEditScreen
+import com.family.bankapp.ui.screens.IncomeScreen
 import com.family.bankapp.ui.screens.PrivacyPolicyScreen
 import com.family.bankapp.ui.screens.SettingsScreen
 import android.content.Context
@@ -55,6 +57,7 @@ sealed class Screen(val route: String, val label: String) {
     data object Dashboard : Screen("dashboard", "Home")
     data object Banks : Screen("banks", "Banks")
     data object Bills : Screen("bills", "Bills")
+    data object Income : Screen("income", "Income")
     data object Settings : Screen("settings", "Settings")
     data object PrivacyPolicy : Screen("privacy-policy", "Privacy")
     data object BankDetail : Screen("bank/{bankId}", "Bank") {
@@ -73,6 +76,7 @@ private val bottomTabs = listOf(
     Screen.Dashboard to Icons.Default.Home,
     Screen.Banks to Icons.Default.AccountBalance,
     Screen.Bills to Icons.Default.Receipt,
+    Screen.Income to Icons.Default.AttachMoney,
     Screen.Settings to Icons.Default.Settings
 )
 
@@ -157,7 +161,12 @@ fun BankAppNavHost() {
                 BillsScreen(
                     padding = androidx.compose.foundation.layout.PaddingValues(),
                     onAddBill = { navController.navigate(Screen.BillEdit.createRoute()) },
-                    onEditBill = { id -> navController.navigate(Screen.BillEdit.createRoute(id)) },
+                    onEditBill = { id -> navController.navigate(Screen.BillEdit.createRoute(id)) }
+                )
+            }
+            composable(Screen.Income.route) {
+                IncomeScreen(
+                    padding = androidx.compose.foundation.layout.PaddingValues(),
                     onAddIncome = { navController.navigate(Screen.IncomeEdit.createRoute()) },
                     onEditIncome = { id -> navController.navigate(Screen.IncomeEdit.createRoute(id)) }
                 )
