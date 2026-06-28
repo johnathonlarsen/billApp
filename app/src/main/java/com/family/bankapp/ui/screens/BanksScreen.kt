@@ -211,6 +211,7 @@ fun BankDetailScreen(
     var reconnectPasswordError by remember { mutableStateOf<String?>(null) }
     var transactionBillUi by remember { mutableStateOf<TransactionBillUiState?>(null) }
     var selectedAccountTabIndex by remember { mutableIntStateOf(0) }
+    var transactionPageIndex by remember { mutableIntStateOf(0) }
 
     val accountOptions = remember(banks) {
         banks.flatMap { bwa ->
@@ -239,6 +240,9 @@ fun BankDetailScreen(
         if (selectedAccountTabIndex >= accountTabs.size) {
             selectedAccountTabIndex = 0
         }
+    }
+    LaunchedEffect(selectedAccountTabIndex) {
+        transactionPageIndex = 0
     }
     val selectedAccountTab = accountTabs.getOrNull(selectedAccountTabIndex)
     val isPlaidConnected = !item?.bank?.plaidItemId.isNullOrBlank()
@@ -540,7 +544,10 @@ fun BankDetailScreen(
                             accountTabs.forEachIndexed { index, tab ->
                                 Tab(
                                     selected = selectedAccountTabIndex == index,
-                                    onClick = { selectedAccountTabIndex = index },
+                                    onClick = {
+                                        selectedAccountTabIndex = index
+                                        transactionPageIndex = 0
+                                    },
                                     text = {
                                         Text(
                                             text = accountTabLabel(tab),
@@ -596,7 +603,23 @@ fun BankDetailScreen(
                                 )
                             }
                         } else {
-                            items(tab.transactions, key = { it.plaidTransactionId }) { tx ->
+                            val totalPages = tabPageCount(tab.transactions.size)
+                            val safePage = transactionPageIndex.coerceIn(0, totalPages - 1)
+                            val pageTransactions = tabTransactionsForPage(tab.transactions, safePage)
+
+                            if (totalPages > 1) {
+                                item {
+                                    TransactionPageControls(
+                                        pageIndex = safePage,
+                                        totalPages = totalPages,
+                                        totalCount = tab.transactions.size,
+                                        onPrevious = { transactionPageIndex = safePage - 1 },
+                                        onNext = { transactionPageIndex = safePage + 1 }
+                                    )
+                                }
+                            }
+
+                            items(pageTransactions, key = { it.plaidTransactionId }) { tx ->
                                 PlaidTransactionRow(
                                     tx = tx,
                                     onAddAsBill = if (tx.canAddAsBill()) {
@@ -605,6 +628,18 @@ fun BankDetailScreen(
                                         null
                                     }
                                 )
+                            }
+
+                            if (totalPages > 1) {
+                                item {
+                                    TransactionPageControls(
+                                        pageIndex = safePage,
+                                        totalPages = totalPages,
+                                        totalCount = tab.transactions.size,
+                                        onPrevious = { transactionPageIndex = safePage - 1 },
+                                        onNext = { transactionPageIndex = safePage + 1 }
+                                    )
+                                }
                             }
                         }
                     }
@@ -1051,7 +1086,16 @@ private fun sortPlaidTransactions(transactions: List<PlaidTransactionEntity>): L
             .thenByDescending { it.plaidTransactionId }
     )
 
-private const val TRANSACTIONS_PER_ACCOUNT_DISPLAY = 50
+private const val TRANSACTIONS_PER_PAGE = 50
+
+private fun tabPageCount(transactionCount: Int): Int =
+    ((transactionCount + TRANSACTIONS_PER_PAGE - 1) / TRANSACTIONS_PER_PAGE).coerceAtLeast(1)
+
+private fun tabTransactionsForPage(
+    transactions: List<PlaidTransactionEntity>,
+    pageIndex: Int
+): List<PlaidTransactionEntity> =
+    transactions.drop(pageIndex * TRANSACTIONS_PER_PAGE).take(TRANSACTIONS_PER_PAGE)
 
 private fun buildAccountTransactionTabs(
     accounts: List<AccountEntity>,
@@ -1065,10 +1109,7 @@ private fun buildAccountTransactionTabs(
             account = account,
             label = account.name,
             transactions = account.plaidAccountId
-                ?.let { plaidId ->
-                    sortPlaidTransactions(txsByPlaidId[plaidId].orEmpty())
-                        .take(TRANSACTIONS_PER_ACCOUNT_DISPLAY)
-                }
+                ?.let { plaidId -> sortPlaidTransactions(txsByPlaidId[plaidId].orEmpty()) }
                 .orEmpty()
         )
     }.toMutableList()
@@ -1080,11 +1121,50 @@ private fun buildAccountTransactionTabs(
         tabs += AccountTransactionTab(
             account = null,
             label = "Other",
-            transactions = unmatched.take(TRANSACTIONS_PER_ACCOUNT_DISPLAY)
+            transactions = unmatched
         )
     }
 
     return tabs
+}
+
+@Composable
+private fun TransactionPageControls(
+    pageIndex: Int,
+    totalPages: Int,
+    totalCount: Int,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit
+) {
+    val pageStart = pageIndex * TRANSACTIONS_PER_PAGE + 1
+    val pageEnd = minOf((pageIndex + 1) * TRANSACTIONS_PER_PAGE, totalCount)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TextButton(onClick = onPrevious, enabled = pageIndex > 0) {
+            Text("Previous")
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                "Page ${pageIndex + 1} of $totalPages",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                "$pageStart–$pageEnd of $totalCount",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        TextButton(onClick = onNext, enabled = pageIndex < totalPages - 1) {
+            Text("Next")
+        }
+    }
 }
 
 @Composable
