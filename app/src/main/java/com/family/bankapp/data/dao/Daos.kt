@@ -165,9 +165,9 @@ interface IncomeDao {
 @Dao
 interface PlaidTransactionDao {
     @Query(
-        "SELECT * FROM plaid_transactions WHERE bankId = :bankId ORDER BY date DESC, plaidTransactionId DESC LIMIT :limit"
+        "SELECT * FROM plaid_transactions WHERE bankId = :bankId ORDER BY date DESC, plaidTransactionId DESC"
     )
-    fun observeByBank(bankId: Long, limit: Int = 50): Flow<List<com.family.bankapp.data.entity.PlaidTransactionEntity>>
+    fun observeByBank(bankId: Long): Flow<List<com.family.bankapp.data.entity.PlaidTransactionEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(transactions: List<com.family.bankapp.data.entity.PlaidTransactionEntity>)

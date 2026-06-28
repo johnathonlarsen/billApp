@@ -1051,6 +1051,8 @@ private fun sortPlaidTransactions(transactions: List<PlaidTransactionEntity>): L
             .thenByDescending { it.plaidTransactionId }
     )
 
+private const val TRANSACTIONS_PER_ACCOUNT_DISPLAY = 50
+
 private fun buildAccountTransactionTabs(
     accounts: List<AccountEntity>,
     transactions: List<PlaidTransactionEntity>
@@ -1063,7 +1065,10 @@ private fun buildAccountTransactionTabs(
             account = account,
             label = account.name,
             transactions = account.plaidAccountId
-                ?.let { plaidId -> sortPlaidTransactions(txsByPlaidId[plaidId].orEmpty()) }
+                ?.let { plaidId ->
+                    sortPlaidTransactions(txsByPlaidId[plaidId].orEmpty())
+                        .take(TRANSACTIONS_PER_ACCOUNT_DISPLAY)
+                }
                 .orEmpty()
         )
     }.toMutableList()
@@ -1075,7 +1080,7 @@ private fun buildAccountTransactionTabs(
         tabs += AccountTransactionTab(
             account = null,
             label = "Other",
-            transactions = unmatched
+            transactions = unmatched.take(TRANSACTIONS_PER_ACCOUNT_DISPLAY)
         )
     }
 

@@ -46,8 +46,8 @@ class BankRepository(
     suspend fun getPlaidConnectedCount(): Int = bankDao.getPlaidConnectedCount()
     fun observeAccounts(): Flow<List<AccountEntity>> = accountDao.observeAll()
     fun observeAccountsByBank(bankId: Long): Flow<List<AccountEntity>> = accountDao.observeByBank(bankId)
-    fun observePlaidTransactionsByBank(bankId: Long, limit: Int = 50): Flow<List<PlaidTransactionEntity>> =
-        plaidTransactionDao.observeByBank(bankId, limit)
+    fun observePlaidTransactionsByBank(bankId: Long): Flow<List<PlaidTransactionEntity>> =
+        plaidTransactionDao.observeByBank(bankId)
     fun observeActiveBills(): Flow<List<BillEntity>> = billDao.observeActive()
     fun observePaymentHistory(billId: Long): Flow<List<PaymentRecordEntity>> =
         paymentRecordDao.observeByBill(billId)
