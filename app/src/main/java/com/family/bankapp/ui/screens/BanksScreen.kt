@@ -27,7 +27,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
@@ -37,6 +39,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -44,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -206,6 +210,7 @@ fun BankDetailScreen(
     var reconnectPassword by remember { mutableStateOf("") }
     var reconnectPasswordError by remember { mutableStateOf<String?>(null) }
     var transactionBillUi by remember { mutableStateOf<TransactionBillUiState?>(null) }
+    var selectedAccountTabIndex by remember { mutableIntStateOf(0) }
 
     val accountOptions = remember(banks) {
         banks.flatMap { bwa ->
@@ -227,9 +232,15 @@ fun BankDetailScreen(
 
     val plaidTransactions by vm.observePlaidTransactions(bankId).collectAsState(initial = emptyList())
     val activeBills by vm.activeBills.collectAsState()
-    val groupedPlaidTransactions = remember(plaidTransactions, item?.accounts) {
-        groupPlaidTransactionsByAccount(plaidTransactions, item?.accounts.orEmpty())
+    val accountTabs = remember(plaidTransactions, item?.accounts) {
+        buildAccountTransactionTabs(item?.accounts.orEmpty(), plaidTransactions)
     }
+    LaunchedEffect(accountTabs.size) {
+        if (selectedAccountTabIndex >= accountTabs.size) {
+            selectedAccountTabIndex = 0
+        }
+    }
+    val selectedAccountTab = accountTabs.getOrNull(selectedAccountTabIndex)
     val isPlaidConnected = !item?.bank?.plaidItemId.isNullOrBlank()
     val hasUnrestoredLinks = restorableItems.isNotEmpty()
     val matchingRestore = remember(item?.bank?.name, restorableItems, preferredRestoreItemId) {
@@ -518,96 +529,83 @@ fun BankDetailScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-            }
+            } else if (accountTabs.isNotEmpty()) {
+                if (accountTabs.size > 1) {
+                    item {
+                        PrimaryScrollableTabRow(
+                            selectedTabIndex = selectedAccountTabIndex,
+                            edgePadding = 16.dp,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            accountTabs.forEachIndexed { index, tab ->
+                                Tab(
+                                    selected = selectedAccountTabIndex == index,
+                                    onClick = { selectedAccountTabIndex = index },
+                                    text = {
+                                        Text(
+                                            text = accountTabLabel(tab),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
 
-            items(item.accounts) { account ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                ) {
-                    Row(
-                        Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(account.name, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                account.accountType.label,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                selectedAccountTab?.let { tab ->
+                    tab.account?.let { account ->
+                        item {
+                            BankAccountSummaryCard(
+                                account = account,
+                                onEdit = { editingAccount = account }
                             )
+                        }
+                    }
+
+                    if (isPlaidConnected || plaidTransactions.isNotEmpty()) {
+                        item {
                             Text(
-                                MoneyFormatter.format(account.balanceCents),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
+                                "Transactions",
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
                             )
-                            if (!account.plaidAccountId.isNullOrBlank()) {
+                        }
+                        if (!isPlaidConnected && plaidTransactions.isNotEmpty()) {
+                            item {
                                 Text(
-                                    "From Plaid",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            if (account.accountType == AccountType.SAVINGS && !account.includeInFreeToSpend) {
-                                Text(
-                                    "Excluded from free to spend",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            if (account.notes.isNotBlank()) {
-                                Text(
-                                    account.notes,
+                                    "Cached from your last Plaid sync — restore the saved link to refresh.",
+                                    modifier = Modifier.padding(horizontal = 16.dp),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
-                        IconButton(onClick = { editingAccount = account }) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit")
-                        }
-                    }
-                }
-            }
-
-            if (isPlaidConnected || plaidTransactions.isNotEmpty()) {
-                item { SectionHeader("Recent transactions") }
-                if (!isPlaidConnected && plaidTransactions.isNotEmpty()) {
-                    item {
-                        Text(
-                            "Cached from your last Plaid sync — restore the saved link to refresh.",
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                if (plaidTransactions.isEmpty()) {
-                    item {
-                        Text(
-                            "No transactions yet — tap Sync from Plaid.",
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                } else {
-                    groupedPlaidTransactions.forEach { group ->
-                        item {
-                            PlaidAccountTransactionHeader(
-                                accountLabel = group.accountLabel,
-                                transactionCount = group.transactions.size
-                            )
-                        }
-                        items(group.transactions, key = { it.plaidTransactionId }) { tx ->
-                            PlaidTransactionRow(
-                                tx = tx,
-                                onAddAsBill = if (tx.canAddAsBill()) {
-                                    { transactionBillUi = TransactionBillUiState.ChooseAction(tx) }
-                                } else {
-                                    null
-                                }
-                            )
+                        if (tab.transactions.isEmpty()) {
+                            item {
+                                Text(
+                                    if (tab.account?.plaidAccountId.isNullOrBlank()) {
+                                        "No Plaid transactions for this account yet."
+                                    } else {
+                                        "No transactions for this account — tap Sync from Plaid."
+                                    },
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        } else {
+                            items(tab.transactions, key = { it.plaidTransactionId }) { tx ->
+                                PlaidTransactionRow(
+                                    tx = tx,
+                                    onAddAsBill = if (tx.canAddAsBill()) {
+                                        { transactionBillUi = TransactionBillUiState.ChooseAction(tx) }
+                                    } else {
+                                        null
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -982,61 +980,106 @@ fun BankDetailScreen(
 }
 
 @Composable
-private fun PlaidAccountTransactionHeader(
-    accountLabel: String,
-    transactionCount: Int
+private fun BankAccountSummaryCard(
+    account: AccountEntity,
+    onEdit: () -> Unit
 ) {
-    Column(
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp)
+            .padding(horizontal = 16.dp, vertical = 4.dp)
     ) {
-        Text(
-            accountLabel,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Text(
-            "$transactionCount transaction(s)",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Row(
+            Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(account.name, fontWeight = FontWeight.SemiBold)
+                Text(
+                    account.accountType.label,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    MoneyFormatter.format(account.balanceCents),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                if (!account.plaidAccountId.isNullOrBlank()) {
+                    Text(
+                        "From Plaid",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                if (account.accountType == AccountType.SAVINGS && !account.includeInFreeToSpend) {
+                    Text(
+                        "Excluded from free to spend",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (account.notes.isNotBlank()) {
+                    Text(
+                        account.notes,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            IconButton(onClick = onEdit) {
+                Icon(Icons.Default.Edit, contentDescription = "Edit")
+            }
+        }
     }
 }
 
-private data class PlaidAccountTransactionGroup(
-    val accountLabel: String,
-    val sortOrder: Int,
+private data class AccountTransactionTab(
+    val account: AccountEntity?,
+    val label: String,
     val transactions: List<PlaidTransactionEntity>
 )
 
-private fun groupPlaidTransactionsByAccount(
-    transactions: List<PlaidTransactionEntity>,
-    accounts: List<AccountEntity>
-): List<PlaidAccountTransactionGroup> {
-    val accountByPlaidId = accounts.mapNotNull { account ->
-        account.plaidAccountId?.let { it to account }
-    }.toMap()
+private fun accountTabLabel(tab: AccountTransactionTab): String {
+    val count = tab.transactions.size
+    return if (count > 0) "${tab.label} ($count)" else tab.label
+}
 
-    return transactions
-        .groupBy { it.plaidAccountId }
-        .map { (plaidAccountId, txs) ->
-            val account = accountByPlaidId[plaidAccountId]
-            val label = account?.name ?: "Plaid account ···${plaidAccountId.takeLast(4)}"
-            val sortOrder = account?.let { acc ->
-                accounts.indexOfFirst { it.id == acc.id }.takeIf { it >= 0 }
-            } ?: Int.MAX_VALUE
-            PlaidAccountTransactionGroup(
-                accountLabel = label,
-                sortOrder = sortOrder,
-                transactions = txs.sortedWith(
-                    compareByDescending<PlaidTransactionEntity> { it.date }
-                        .thenByDescending { it.plaidTransactionId }
-                )
-            )
-        }
-        .sortedWith(compareBy({ it.sortOrder }, { it.accountLabel }))
+private fun sortPlaidTransactions(transactions: List<PlaidTransactionEntity>): List<PlaidTransactionEntity> =
+    transactions.sortedWith(
+        compareByDescending<PlaidTransactionEntity> { it.date }
+            .thenByDescending { it.plaidTransactionId }
+    )
+
+private fun buildAccountTransactionTabs(
+    accounts: List<AccountEntity>,
+    transactions: List<PlaidTransactionEntity>
+): List<AccountTransactionTab> {
+    val txsByPlaidId = transactions.groupBy { it.plaidAccountId }
+    val knownPlaidIds = accounts.mapNotNull { it.plaidAccountId }.toSet()
+
+    val tabs = accounts.map { account ->
+        AccountTransactionTab(
+            account = account,
+            label = account.name,
+            transactions = account.plaidAccountId
+                ?.let { plaidId -> sortPlaidTransactions(txsByPlaidId[plaidId].orEmpty()) }
+                .orEmpty()
+        )
+    }.toMutableList()
+
+    val unmatched = sortPlaidTransactions(
+        transactions.filter { it.plaidAccountId !in knownPlaidIds }
+    )
+    if (unmatched.isNotEmpty()) {
+        tabs += AccountTransactionTab(
+            account = null,
+            label = "Other",
+            transactions = unmatched
+        )
+    }
+
+    return tabs
 }
 
 @Composable
