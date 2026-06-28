@@ -8,6 +8,8 @@ import com.family.bankapp.data.entity.BillEntity
 import com.family.bankapp.data.entity.PaymentRecordEntity
 import com.family.bankapp.data.model.BillCategory
 import com.family.bankapp.data.model.BillRecurrence
+import com.family.bankapp.data.entity.PlaidTransactionEntity
+import com.family.bankapp.plaid.PlaidTransactionBillDraft
 import com.family.bankapp.util.BillCsvImportResult
 import com.family.bankapp.util.BillCsvImporter
 import com.family.bankapp.util.BillDueInfo
@@ -145,6 +147,32 @@ class BillsViewModel(application: Application) : AndroidViewModel(application) {
             val banks = repository.observeBanks().first()
             val accounts = repository.observeAccounts().first()
             onReady(BillCsvImporter.export(bills, banks, accounts))
+        }
+    }
+
+    fun saveBillFromPlaidTransaction(
+        draft: PlaidTransactionBillDraft,
+        tx: PlaidTransactionEntity,
+        dueDateMillis: Long?,
+        onResult: (Result<Long>) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            onResult(runCatching {
+                repository.createBillFromPlaidTransaction(
+                    BillEntity(
+                        name = draft.name.trim(),
+                        amountCents = draft.amountCents,
+                        recurrence = draft.recurrence,
+                        category = draft.category,
+                        dueDayOfMonth = draft.dueDayOfMonth,
+                        dueDateMillis = dueDateMillis,
+                        linkedAccountId = draft.linkedAccountId,
+                        reminderDaysBefore = draft.reminderDaysBefore,
+                        notes = draft.notes.trim()
+                    ),
+                    tx
+                )
+            })
         }
     }
 }

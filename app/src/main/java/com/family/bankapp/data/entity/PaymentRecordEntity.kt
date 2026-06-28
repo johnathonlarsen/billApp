@@ -30,5 +30,6 @@ data class PaymentRecordEntity(
     val amountCents: Long,
     val paidAt: Long = System.currentTimeMillis(),
     val cycleDueDateMillis: Long = 0,
-    val note: String = ""
+    val note: String = "",
+    val plaidTransactionId: String? = null
 )

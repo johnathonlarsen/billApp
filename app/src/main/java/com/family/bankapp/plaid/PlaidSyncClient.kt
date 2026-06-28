@@ -48,11 +48,14 @@ object PlaidSyncClient {
                 pages++
             } while (hasMore && pages < MAX_TRANSACTION_PAGES)
 
+            val autoPaid = repository.applyAutoBillPaymentsForBank(bankId)
+
             PlaidBankSyncResult(
                 accountsImported = accountsImported,
                 transactionsAdded = totalAdded,
                 transactionsRemoved = totalRemoved,
-                hasMoreTransactions = hasMore
+                hasMoreTransactions = hasMore,
+                autoPaymentsApplied = autoPaid
             )
         }
     }

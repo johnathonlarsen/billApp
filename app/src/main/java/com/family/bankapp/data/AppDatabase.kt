@@ -18,9 +18,11 @@ import com.family.bankapp.data.entity.BillEntity
 import com.family.bankapp.data.entity.PaymentRecordEntity
 import com.family.bankapp.data.dao.BillCycleSkipDao
 import com.family.bankapp.data.dao.IncomeDao
+import com.family.bankapp.data.dao.PlaidPaymentLinkDao
 import com.family.bankapp.data.dao.PlaidTransactionDao
 import com.family.bankapp.data.entity.BillCycleSkipEntity
 import com.family.bankapp.data.entity.IncomeEntity
+import com.family.bankapp.data.entity.PlaidPaymentLinkEntity
 import com.family.bankapp.data.entity.PlaidTransactionEntity
 import com.family.bankapp.data.model.AccountType
 import com.family.bankapp.data.model.BillCategory
@@ -49,9 +51,10 @@ class Converters {
         PaymentRecordEntity::class,
         PlaidTransactionEntity::class,
         IncomeEntity::class,
-        BillCycleSkipEntity::class
+        BillCycleSkipEntity::class,
+        PlaidPaymentLinkEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -63,6 +66,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun plaidTransactionDao(): PlaidTransactionDao
     abstract fun incomeDao(): IncomeDao
     abstract fun billCycleSkipDao(): BillCycleSkipDao
+    abstract fun plaidPaymentLinkDao(): PlaidPaymentLinkDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null
@@ -170,6 +174,30 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE bills ADD COLUMN plaidMatchPattern TEXT")
+                db.execSQL(
+                    "ALTER TABLE bills ADD COLUMN plaidAutoMarkPaid INTEGER NOT NULL DEFAULT 1"
+                )
+                db.execSQL("ALTER TABLE payment_records ADD COLUMN plaidTransactionId TEXT")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS plaid_payment_links (
+                        plaidTransactionId TEXT NOT NULL PRIMARY KEY,
+                        billId INTEGER NOT NULL,
+                        paymentRecordId INTEGER,
+                        linkedAt INTEGER NOT NULL,
+                        FOREIGN KEY(billId) REFERENCES bills(id) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_plaid_payment_links_billId ON plaid_payment_links(billId)"
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -183,7 +211,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_3_4,
                         MIGRATION_4_5,
                         MIGRATION_5_6,
-                        MIGRATION_6_7
+                        MIGRATION_6_7,
+                        MIGRATION_7_8
                     )
                     .build().also { instance = it }
             }

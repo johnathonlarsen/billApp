@@ -33,5 +33,9 @@ data class BillEntity(
     val lastPaidAt: Long? = null,
     val notes: String = "",
     /** Only bill cycles on or after this month count toward free-to-spend (when added to the app). */
-    val trackingStartMillis: Long = System.currentTimeMillis()
+    val trackingStartMillis: Long = System.currentTimeMillis(),
+    /** Normalized Plaid name/merchant substring for auto-matching transactions. */
+    val plaidMatchPattern: String? = null,
+    /** When true, matching Plaid debits auto-mark the bill paid for that cycle. */
+    val plaidAutoMarkPaid: Boolean = true
 )

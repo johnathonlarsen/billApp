@@ -10,15 +10,18 @@ import com.family.bankapp.data.entity.BillEntity
 import com.family.bankapp.data.entity.PaymentRecordEntity
 import com.family.bankapp.data.dao.BillCycleSkipDao
 import com.family.bankapp.data.dao.IncomeDao
+import com.family.bankapp.data.dao.PlaidPaymentLinkDao
 import com.family.bankapp.data.dao.PlaidTransactionDao
 import com.family.bankapp.data.entity.BillCycleSkipEntity
 import com.family.bankapp.data.entity.IncomeEntity
+import com.family.bankapp.data.entity.PlaidPaymentLinkEntity
 import com.family.bankapp.data.entity.PlaidTransactionEntity
 import com.family.bankapp.data.model.ConnectionType
 import com.family.bankapp.plaid.PlaidAccountSnapshot
 import com.family.bankapp.plaid.PlaidTransactionSnapshot
 import com.family.bankapp.plaid.mapPlaidAccountType
 import com.family.bankapp.util.BillSchedule
+import com.family.bankapp.util.BillTransactionMatcher
 import java.time.LocalDate
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -30,7 +33,8 @@ class BankRepository(
     private val paymentRecordDao: PaymentRecordDao,
     private val plaidTransactionDao: PlaidTransactionDao,
     private val incomeDao: IncomeDao,
-    private val billCycleSkipDao: BillCycleSkipDao
+    private val billCycleSkipDao: BillCycleSkipDao,
+    private val plaidPaymentLinkDao: PlaidPaymentLinkDao
 ) {
     companion object {
         const val MAX_BANKS = 3
@@ -266,6 +270,32 @@ class BankRepository(
     suspend fun deleteAccount(account: AccountEntity) = accountDao.delete(account)
 
     suspend fun addBill(bill: BillEntity): Long = billDao.insert(bill)
+
+    suspend fun createBillFromPlaidTransaction(
+        bill: BillEntity,
+        tx: PlaidTransactionEntity
+    ): Long {
+        val pattern = BillTransactionMatcher.matchPatternFromTransaction(tx)
+        val id = billDao.insert(
+            bill.copy(
+                plaidMatchPattern = pattern,
+                plaidAutoMarkPaid = true
+            )
+        )
+        val saved = billDao.getById(id) ?: return id
+        if (!tx.pending) {
+            markBillPaidFromTransaction(saved, tx, accountDao.getAllSync())
+        } else {
+            plaidPaymentLinkDao.insert(
+                PlaidPaymentLinkEntity(
+                    plaidTransactionId = tx.plaidTransactionId,
+                    billId = id
+                )
+            )
+        }
+        return id
+    }
+
     suspend fun addBills(bills: List<BillEntity>): Int {
         bills.forEach { billDao.insert(it) }
         return bills.size
@@ -285,6 +315,127 @@ class BankRepository(
     suspend fun addIncome(income: IncomeEntity): Long = incomeDao.insert(income)
     suspend fun updateIncome(income: IncomeEntity) = incomeDao.update(income)
     suspend fun deleteIncome(income: IncomeEntity) = incomeDao.delete(income)
+
+    suspend fun linkBillToTransaction(
+        bill: BillEntity,
+        tx: PlaidTransactionEntity,
+        markThisCyclePaid: Boolean = true
+    ): BillEntity {
+        val accounts = accountDao.getAllSync()
+        val pattern = BillTransactionMatcher.matchPatternFromTransaction(tx)
+        val linkedAccount = accounts.find { it.plaidAccountId == tx.plaidAccountId }?.id
+        val updated = bill.copy(
+            plaidMatchPattern = pattern,
+            plaidAutoMarkPaid = true,
+            linkedAccountId = linkedAccount ?: bill.linkedAccountId
+        )
+        billDao.update(updated)
+        if (markThisCyclePaid && !tx.pending) {
+            markBillPaidFromTransaction(updated, tx, accounts)
+        } else {
+            plaidPaymentLinkDao.insert(
+                PlaidPaymentLinkEntity(
+                    plaidTransactionId = tx.plaidTransactionId,
+                    billId = bill.id
+                )
+            )
+        }
+        return updated
+    }
+
+    suspend fun updateBillFromTransaction(
+        bill: BillEntity,
+        tx: PlaidTransactionEntity
+    ): BillEntity {
+        val accounts = accountDao.getAllSync()
+        val dueDay = runCatching { LocalDate.parse(tx.date).dayOfMonth }.getOrDefault(bill.dueDayOfMonth)
+        val linkedAccount = accounts.find { it.plaidAccountId == tx.plaidAccountId }?.id
+        val displayName = tx.merchantName?.takeIf { it.isNotBlank() } ?: tx.name
+        val updated = bill.copy(
+            name = displayName,
+            amountCents = tx.amountCents,
+            dueDayOfMonth = dueDay.coerceIn(1, 28),
+            linkedAccountId = linkedAccount ?: bill.linkedAccountId,
+            plaidMatchPattern = BillTransactionMatcher.matchPatternFromTransaction(tx),
+            plaidAutoMarkPaid = true
+        )
+        billDao.update(updated)
+        if (!tx.pending) {
+            markBillPaidFromTransaction(updated, tx, accounts)
+        } else {
+            plaidPaymentLinkDao.insert(
+                PlaidPaymentLinkEntity(
+                    plaidTransactionId = tx.plaidTransactionId,
+                    billId = bill.id
+                )
+            )
+        }
+        return updated
+    }
+
+    suspend fun applyAutoBillPaymentsForBank(bankId: Long): Int {
+        val bills = billDao.getActiveSync()
+            .filter { it.plaidAutoMarkPaid && !it.plaidMatchPattern.isNullOrBlank() }
+        if (bills.isEmpty()) return 0
+
+        val accounts = accountDao.getAllSync()
+        val linkedIds = plaidPaymentLinkDao.getAllLinkedTransactionIds().toSet()
+        val transactions = plaidTransactionDao.getByBankSync(bankId)
+            .filter { it.amountCents > 0 && !it.pending && it.plaidTransactionId !in linkedIds }
+
+        var applied = 0
+        for (tx in transactions) {
+            val matches = bills.filter { BillTransactionMatcher.transactionMatchesBill(tx, it, accounts) }
+            if (matches.size != 1) continue
+            markBillPaidFromTransaction(matches.single(), tx, accounts)
+            applied++
+        }
+        return applied
+    }
+
+    private suspend fun markBillPaidFromTransaction(
+        bill: BillEntity,
+        tx: PlaidTransactionEntity,
+        accounts: List<AccountEntity>
+    ) {
+        val existingLink = plaidPaymentLinkDao.getByTransactionId(tx.plaidTransactionId)
+        if (existingLink?.paymentRecordId != null) return
+
+        val txDate = runCatching { LocalDate.parse(tx.date) }.getOrDefault(LocalDate.now())
+        val cycleDue = BillTransactionMatcher.cycleDueDateForTransaction(bill, txDate)
+        val cycleMillis = BillSchedule.toCycleMillis(cycleDue)
+        if (paymentRecordDao.getForCycle(bill.id, cycleMillis) != null) {
+            plaidPaymentLinkDao.insert(
+                PlaidPaymentLinkEntity(
+                    plaidTransactionId = tx.plaidTransactionId,
+                    billId = bill.id
+                )
+            )
+            return
+        }
+
+        val accountId = accounts.find { it.plaidAccountId == tx.plaidAccountId }?.id ?: bill.linkedAccountId
+        val paidAt = BillTransactionMatcher.paidAtMillisFromTransaction(tx)
+        val recordId = paymentRecordDao.insert(
+            PaymentRecordEntity(
+                billId = bill.id,
+                accountId = accountId,
+                amountCents = tx.amountCents,
+                paidAt = paidAt,
+                cycleDueDateMillis = cycleMillis,
+                note = "Auto · Plaid: ${tx.name}",
+                plaidTransactionId = tx.plaidTransactionId
+            )
+        )
+        billDao.update(bill.copy(lastPaidAt = paidAt))
+        plaidPaymentLinkDao.insert(
+            PlaidPaymentLinkEntity(
+                plaidTransactionId = tx.plaidTransactionId,
+                billId = bill.id,
+                paymentRecordId = recordId
+            )
+        )
+    }
 
     suspend fun markBillPaid(
         bill: BillEntity,

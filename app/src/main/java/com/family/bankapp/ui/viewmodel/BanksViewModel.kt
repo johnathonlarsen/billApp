@@ -303,4 +303,33 @@ class BanksViewModel(application: Application) : AndroidViewModel(application) {
 
     fun observePlaidTransactions(bankId: Long): Flow<List<com.family.bankapp.data.entity.PlaidTransactionEntity>> =
         repository.observePlaidTransactionsByBank(bankId)
+
+    val activeBills = repository.observeActiveBills()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun linkTransactionToBill(
+        bill: com.family.bankapp.data.entity.BillEntity,
+        tx: com.family.bankapp.data.entity.PlaidTransactionEntity,
+        onResult: (Result<Unit>) -> Unit
+    ) {
+        viewModelScope.launch {
+            onResult(runCatching {
+                repository.linkBillToTransaction(bill, tx)
+                Unit
+            })
+        }
+    }
+
+    fun updateBillFromTransaction(
+        bill: com.family.bankapp.data.entity.BillEntity,
+        tx: com.family.bankapp.data.entity.PlaidTransactionEntity,
+        onResult: (Result<Unit>) -> Unit
+    ) {
+        viewModelScope.launch {
+            onResult(runCatching {
+                repository.updateBillFromTransaction(bill, tx)
+                Unit
+            })
+        }
+    }
 }

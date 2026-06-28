@@ -12,6 +12,7 @@ import com.family.bankapp.data.entity.BillEntity
 import com.family.bankapp.data.entity.BillCycleSkipEntity
 import com.family.bankapp.data.entity.IncomeEntity
 import com.family.bankapp.data.entity.PaymentRecordEntity
+import com.family.bankapp.data.entity.PlaidPaymentLinkEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -69,6 +70,9 @@ interface AccountDao {
 
     @Query("SELECT * FROM accounts WHERE id = :id")
     suspend fun getById(id: Long): AccountEntity?
+
+    @Query("SELECT * FROM accounts")
+    suspend fun getAllSync(): List<AccountEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(account: AccountEntity): Long
@@ -170,4 +174,22 @@ interface PlaidTransactionDao {
 
     @Query("DELETE FROM plaid_transactions WHERE plaidTransactionId IN (:ids)")
     suspend fun deleteByPlaidIds(ids: List<String>)
+
+    @Query("SELECT * FROM plaid_transactions WHERE bankId = :bankId ORDER BY date DESC")
+    suspend fun getByBankSync(bankId: Long): List<com.family.bankapp.data.entity.PlaidTransactionEntity>
+}
+
+@Dao
+interface PlaidPaymentLinkDao {
+    @Query("SELECT * FROM plaid_payment_links WHERE plaidTransactionId = :txId LIMIT 1")
+    suspend fun getByTransactionId(txId: String): PlaidPaymentLinkEntity?
+
+    @Query("SELECT plaidTransactionId FROM plaid_payment_links")
+    suspend fun getAllLinkedTransactionIds(): List<String>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(link: PlaidPaymentLinkEntity)
+
+    @Query("DELETE FROM plaid_payment_links WHERE plaidTransactionId = :txId")
+    suspend fun deleteByTransactionId(txId: String)
 }

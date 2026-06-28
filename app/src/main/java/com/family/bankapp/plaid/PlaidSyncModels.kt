@@ -38,7 +38,8 @@ data class PlaidBankSyncResult(
     val accountsImported: Int,
     val transactionsAdded: Int,
     val transactionsRemoved: Int,
-    val hasMoreTransactions: Boolean
+    val hasMoreTransactions: Boolean,
+    val autoPaymentsApplied: Int = 0
 )
 
 fun JSONObject.toPlaidAccountsSyncResult(): PlaidAccountsSyncResult {

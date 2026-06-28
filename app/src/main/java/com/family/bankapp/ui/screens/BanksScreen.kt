@@ -49,16 +49,23 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.family.bankapp.FamilyAppConfig
 import com.family.bankapp.data.entity.AccountEntity
+import com.family.bankapp.data.entity.BillEntity
 import com.family.bankapp.data.entity.PlaidTransactionEntity
 import com.family.bankapp.data.model.AccountType
 import com.family.bankapp.data.model.BillRecurrence
 import com.family.bankapp.util.MoneyFormatter
 import com.family.bankapp.data.repository.BankRepository
+import com.family.bankapp.plaid.PlaidBankSyncResult
 import com.family.bankapp.plaid.PlaidNameMatcher
 import com.family.bankapp.plaid.PlaidRestorableItem
 import com.family.bankapp.ui.components.AddBillFromTransactionDialog
+import com.family.bankapp.ui.components.ConfirmLinkBillToTransactionDialog
+import com.family.bankapp.ui.components.ConfirmUpdateBillFromTransactionDialog
+import com.family.bankapp.ui.components.PickBillForTransactionDialog
 import com.family.bankapp.ui.components.PlaidUsageTrackerCard
 import com.family.bankapp.ui.components.SectionHeader
+import com.family.bankapp.ui.components.TransactionBillAction
+import com.family.bankapp.ui.components.TransactionBillActionDialog
 import com.family.bankapp.ui.components.parseColorHex
 import com.family.bankapp.plaid.canAddAsBill
 import com.family.bankapp.ui.viewmodel.BillsViewModel
@@ -198,7 +205,7 @@ fun BankDetailScreen(
     var showReconnectPasswordDialog by remember { mutableStateOf(false) }
     var reconnectPassword by remember { mutableStateOf("") }
     var reconnectPasswordError by remember { mutableStateOf<String?>(null) }
-    var billFromTransaction by remember { mutableStateOf<PlaidTransactionEntity?>(null) }
+    var transactionBillUi by remember { mutableStateOf<TransactionBillUiState?>(null) }
 
     val accountOptions = remember(banks) {
         banks.flatMap { bwa ->
@@ -219,6 +226,7 @@ fun BankDetailScreen(
     }
 
     val plaidTransactions by vm.observePlaidTransactions(bankId).collectAsState(initial = emptyList())
+    val activeBills by vm.activeBills.collectAsState()
     val groupedPlaidTransactions = remember(plaidTransactions, item?.accounts) {
         groupPlaidTransactionsByAccount(plaidTransactions, item?.accounts.orEmpty())
     }
@@ -259,11 +267,7 @@ fun BankDetailScreen(
                     linkResult.onSuccess { sync ->
                         plaidStatusMessage = buildString {
                             append("${item?.bank?.name ?: "Bank"} connected via Plaid.\n\n")
-                            append("Imported ${sync.accountsImported} account(s)")
-                            append(" and ${sync.transactionsAdded} transaction(s).")
-                            if (sync.hasMoreTransactions) {
-                                append("\n\nMore transactions available — tap Sync from Plaid again.")
-                            }
+                            appendPlaidSyncSummary(this, sync)
                         }
                     }.onFailure { e ->
                         plaidStatusMessage = e.message ?: "Could not save Plaid connection"
@@ -328,8 +332,7 @@ fun BankDetailScreen(
                                         plaidSyncBusy = false
                                         result.onSuccess { sync ->
                                             plaidStatusMessage = buildString {
-                                                append("Synced ${sync.accountsImported} account(s)")
-                                                append(" and ${sync.transactionsAdded} new transaction(s).")
+                                                appendPlaidSyncSummary(this, sync)
                                                 if (sync.hasMoreTransactions) {
                                                     append("\n\nMore pages available — sync again if needed.")
                                                 }
@@ -383,8 +386,7 @@ fun BankDetailScreen(
                                                     preferredRestoreItemId = null
                                                     plaidStatusMessage = buildString {
                                                         append("Restored ${link.institutionName}.\n\n")
-                                                        append("Synced ${sync.accountsImported} account(s)")
-                                                        append(" and ${sync.transactionsAdded} transaction(s).")
+                                                        appendPlaidSyncSummary(this, sync)
                                                     }
                                                 }.onFailure { e ->
                                                     plaidStatusMessage = e.message ?: "Could not restore link"
@@ -414,8 +416,7 @@ fun BankDetailScreen(
                                                     preferredRestoreItemId = null
                                                     plaidStatusMessage = buildString {
                                                         append("Restored ${link.institutionName}.\n\n")
-                                                        append("Synced ${sync.accountsImported} account(s)")
-                                                        append(" and ${sync.transactionsAdded} transaction(s).")
+                                                        appendPlaidSyncSummary(this, sync)
                                                     }
                                                 }.onFailure { e ->
                                                     plaidStatusMessage = e.message ?: "Could not restore link"
@@ -602,7 +603,7 @@ fun BankDetailScreen(
                             PlaidTransactionRow(
                                 tx = tx,
                                 onAddAsBill = if (tx.canAddAsBill()) {
-                                    { billFromTransaction = tx }
+                                    { transactionBillUi = TransactionBillUiState.ChooseAction(tx) }
                                 } else {
                                     null
                                 }
@@ -614,39 +615,128 @@ fun BankDetailScreen(
         }
     }
 
-    billFromTransaction?.let { tx ->
-        AddBillFromTransactionDialog(
-            transaction = tx,
-            bankName = item.bank.name,
-            accounts = item.accounts,
-            accountOptions = accountOptions,
-            onDismiss = { billFromTransaction = null },
-            onConfirm = { draft ->
-                val txDate = runCatching { LocalDate.parse(tx.date) }.getOrNull()
-                val dueDateMillis = when (draft.recurrence) {
-                    BillRecurrence.ONE_TIME,
-                    BillRecurrence.WEEKLY,
-                    BillRecurrence.YEARLY -> txDate
-                        ?.atStartOfDay(ZoneId.systemDefault())
-                        ?.toInstant()
-                        ?.toEpochMilli()
-                    else -> null
+    when (val ui = transactionBillUi) {
+        is TransactionBillUiState.ChooseAction -> {
+            TransactionBillActionDialog(
+                transaction = ui.tx,
+                onDismiss = { transactionBillUi = null },
+                onSelect = { action ->
+                    transactionBillUi = when (action) {
+                        TransactionBillAction.NEW_BILL -> TransactionBillUiState.NewBill(ui.tx)
+                        TransactionBillAction.LINK_EXISTING ->
+                            TransactionBillUiState.PickBill(ui.tx, TransactionBillAction.LINK_EXISTING)
+                        TransactionBillAction.UPDATE_EXISTING ->
+                            TransactionBillUiState.PickBill(ui.tx, TransactionBillAction.UPDATE_EXISTING)
+                    }
                 }
-                billsVm.saveBill(
-                    name = draft.name,
-                    amountCents = draft.amountCents,
-                    recurrence = draft.recurrence,
-                    category = draft.category,
-                    dueDayOfMonth = draft.dueDayOfMonth,
-                    dueDateMillis = dueDateMillis,
-                    linkedAccountId = draft.linkedAccountId,
-                    reminderDaysBefore = draft.reminderDaysBefore,
-                    notes = draft.notes
-                )
-                billFromTransaction = null
-                plaidStatusMessage = "\"${draft.name}\" added to your bills."
-            }
-        )
+            )
+        }
+        is TransactionBillUiState.NewBill -> {
+            AddBillFromTransactionDialog(
+                transaction = ui.tx,
+                bankName = item.bank.name,
+                accounts = item.accounts,
+                accountOptions = accountOptions,
+                onDismiss = { transactionBillUi = null },
+                onConfirm = { draft ->
+                    val txDate = runCatching { LocalDate.parse(ui.tx.date) }.getOrNull()
+                    val dueDateMillis = when (draft.recurrence) {
+                        BillRecurrence.ONE_TIME,
+                        BillRecurrence.WEEKLY,
+                        BillRecurrence.YEARLY -> txDate
+                            ?.atStartOfDay(ZoneId.systemDefault())
+                            ?.toInstant()
+                            ?.toEpochMilli()
+                        else -> null
+                    }
+                    billsVm.saveBillFromPlaidTransaction(
+                        draft = draft,
+                        tx = ui.tx,
+                        dueDateMillis = dueDateMillis
+                    ) { result ->
+                        result.onSuccess {
+                            transactionBillUi = null
+                            plaidStatusMessage =
+                                "\"${draft.name}\" added to bills with auto-matching from Plaid."
+                        }.onFailure { e ->
+                            plaidStatusMessage = e.message ?: "Could not add bill"
+                        }
+                    }
+                }
+            )
+        }
+        is TransactionBillUiState.PickBill -> {
+            PickBillForTransactionDialog(
+                title = if (ui.action == TransactionBillAction.LINK_EXISTING) {
+                    "Link to bill"
+                } else {
+                    "Update bill"
+                },
+                description = if (ui.action == TransactionBillAction.LINK_EXISTING) {
+                    "Pick a bill to link this transaction to. Future matching transactions will auto-mark it paid."
+                } else {
+                    "Pick a bill to update from this transaction (name, amount, match pattern)."
+                },
+                bills = activeBills,
+                onDismiss = { transactionBillUi = TransactionBillUiState.ChooseAction(ui.tx) },
+                onPick = { bill ->
+                    transactionBillUi = when (ui.action) {
+                        TransactionBillAction.LINK_EXISTING ->
+                            TransactionBillUiState.ConfirmLink(ui.tx, bill)
+                        TransactionBillAction.UPDATE_EXISTING ->
+                            TransactionBillUiState.ConfirmUpdate(ui.tx, bill)
+                        else -> null
+                    }
+                }
+            )
+        }
+        is TransactionBillUiState.ConfirmLink -> {
+            ConfirmLinkBillToTransactionDialog(
+                bill = ui.bill,
+                transaction = ui.tx,
+                onDismiss = {
+                    transactionBillUi = TransactionBillUiState.PickBill(
+                        ui.tx,
+                        TransactionBillAction.LINK_EXISTING
+                    )
+                },
+                onConfirm = {
+                    vm.linkTransactionToBill(ui.bill, ui.tx) { result ->
+                        result.onSuccess {
+                            transactionBillUi = null
+                            plaidStatusMessage =
+                                "Linked \"${ui.bill.name}\" — matching Plaid transactions will auto-mark it paid."
+                        }.onFailure { e ->
+                            plaidStatusMessage = e.message ?: "Could not link bill"
+                        }
+                    }
+                }
+            )
+        }
+        is TransactionBillUiState.ConfirmUpdate -> {
+            ConfirmUpdateBillFromTransactionDialog(
+                bill = ui.bill,
+                transaction = ui.tx,
+                onDismiss = {
+                    transactionBillUi = TransactionBillUiState.PickBill(
+                        ui.tx,
+                        TransactionBillAction.UPDATE_EXISTING
+                    )
+                },
+                onConfirm = {
+                    vm.updateBillFromTransaction(ui.bill, ui.tx) { result ->
+                        result.onSuccess {
+                            transactionBillUi = null
+                            plaidStatusMessage =
+                                "Updated \"${ui.bill.name}\" from transaction for all future months."
+                        }.onFailure { e ->
+                            plaidStatusMessage = e.message ?: "Could not update bill"
+                        }
+                    }
+                }
+            )
+        }
+        null -> Unit
     }
 
     if (showRemovePlaidDialog) {
@@ -1133,4 +1223,20 @@ private fun AccountDialog(
             }
         }
     )
+}
+
+private sealed interface TransactionBillUiState {
+    data class ChooseAction(val tx: PlaidTransactionEntity) : TransactionBillUiState
+    data class NewBill(val tx: PlaidTransactionEntity) : TransactionBillUiState
+    data class PickBill(val tx: PlaidTransactionEntity, val action: TransactionBillAction) : TransactionBillUiState
+    data class ConfirmLink(val tx: PlaidTransactionEntity, val bill: BillEntity) : TransactionBillUiState
+    data class ConfirmUpdate(val tx: PlaidTransactionEntity, val bill: BillEntity) : TransactionBillUiState
+}
+
+private fun appendPlaidSyncSummary(builder: StringBuilder, sync: PlaidBankSyncResult) {
+    builder.append("Synced ${sync.accountsImported} account(s)")
+    builder.append(" and ${sync.transactionsAdded} transaction(s).")
+    if (sync.autoPaymentsApplied > 0) {
+        builder.append("\n\nAuto-marked ${sync.autoPaymentsApplied} bill(s) paid from matching transactions.")
+    }
 }
