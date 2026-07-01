@@ -10,19 +10,27 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.family.bankapp.ui.components.PlaidUsageTrackerCard
 import com.family.bankapp.ui.components.MoneyText
@@ -41,6 +49,7 @@ private val StatusYellow = Color(0xFFFFB300)
 fun DashboardScreen(padding: PaddingValues) {
     val vm: DashboardViewModel = viewModel()
     val state by vm.state.collectAsState()
+    val context = LocalContext.current
     val formatter = DateTimeFormatter.ofPattern("MMM d")
 
     LazyColumn(
@@ -70,7 +79,16 @@ fun DashboardScreen(padding: PaddingValues) {
 
         state.freeToSpend?.let { fts ->
             item {
-                FreeToSpendCard(fts)
+                FreeToSpendCard(
+                    fts = fts,
+                    onCopyDebug = {
+                        vm.buildFreeToSpendDebugReport()?.let { text ->
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("Free to spend debug", text))
+                            Toast.makeText(context, "Debug info copied to clipboard", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
             }
         }
 
@@ -216,7 +234,10 @@ fun DashboardScreen(padding: PaddingValues) {
 }
 
 @Composable
-private fun FreeToSpendCard(fts: FreeToSpendSnapshot) {
+private fun FreeToSpendCard(
+    fts: FreeToSpendSnapshot,
+    onCopyDebug: () -> Unit
+) {
     val isShort = fts.freeToSpendCents < 0
     val headlineColor = if (isShort) MaterialTheme.colorScheme.error else StatusGreen
     Card(
@@ -228,11 +249,23 @@ private fun FreeToSpendCard(fts: FreeToSpendSnapshot) {
         )
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                if (isShort) "Over budget" else "Free to spend",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    if (isShort) "Over budget" else "Free to spend",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(onClick = onCopyDebug) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = "Copy formula debug info"
+                    )
+                }
+            }
             MoneyText(
                 fts.freeToSpendCents,
                 color = headlineColor,

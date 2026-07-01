@@ -9,6 +9,7 @@ import com.family.bankapp.data.settings.SettingsRepository
 import com.family.bankapp.util.BillDueInfo
 import com.family.bankapp.util.BillSchedule
 import com.family.bankapp.util.FreeToSpendCalculator
+import com.family.bankapp.util.FreeToSpendDebugReport
 import com.family.bankapp.util.FreeToSpendSnapshot
 import com.family.bankapp.util.MonthOverview
 import com.family.bankapp.util.MonthTimeline
@@ -90,4 +91,19 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             freeToSpend = freeToSpend
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DashboardState())
+
+    fun buildFreeToSpendDebugReport(): String? {
+        val current = state.value
+        val snapshot = current.freeToSpend ?: return null
+        val version = runCatching {
+            val info = getApplication<Application>().packageManager
+                .getPackageInfo(getApplication<Application>().packageName, 0)
+            info.versionName ?: "unknown"
+        }.getOrDefault("unknown")
+        return FreeToSpendDebugReport.build(
+            snapshot = snapshot,
+            overview = current.overview,
+            appVersion = version
+        )
+    }
 }
