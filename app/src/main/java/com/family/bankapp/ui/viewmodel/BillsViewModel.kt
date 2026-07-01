@@ -170,7 +170,8 @@ class BillsViewModel(application: Application) : AndroidViewModel(application) {
                         reminderDaysBefore = draft.reminderDaysBefore,
                         notes = draft.notes.trim()
                     ),
-                    tx
+                    tx,
+                    draft.cycleMonthOffset
                 )
             })
         }

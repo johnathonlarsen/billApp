@@ -313,11 +313,12 @@ class BanksViewModel(application: Application) : AndroidViewModel(application) {
     fun linkTransactionToBill(
         bill: com.family.bankapp.data.entity.BillEntity,
         tx: com.family.bankapp.data.entity.PlaidTransactionEntity,
+        cycleMonthOffset: Int,
         onResult: (Result<Unit>) -> Unit
     ) {
         viewModelScope.launch {
             onResult(runCatching {
-                repository.linkBillToTransaction(bill, tx)
+                repository.linkBillToTransaction(bill, tx, cycleMonthOffset)
                 Unit
             })
         }
@@ -338,11 +339,12 @@ class BanksViewModel(application: Application) : AndroidViewModel(application) {
     fun updateBillFromTransaction(
         bill: com.family.bankapp.data.entity.BillEntity,
         tx: com.family.bankapp.data.entity.PlaidTransactionEntity,
+        cycleMonthOffset: Int,
         onResult: (Result<Unit>) -> Unit
     ) {
         viewModelScope.launch {
             onResult(runCatching {
-                repository.updateBillFromTransaction(bill, tx)
+                repository.updateBillFromTransaction(bill, tx, cycleMonthOffset)
                 Unit
             })
         }

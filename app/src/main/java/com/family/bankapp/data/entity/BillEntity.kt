@@ -37,5 +37,10 @@ data class BillEntity(
     /** Normalized Plaid name/merchant substring for auto-matching transactions. */
     val plaidMatchPattern: String? = null,
     /** When true, matching Plaid debits auto-mark the bill paid for that cycle. */
-    val plaidAutoMarkPaid: Boolean = true
+    val plaidAutoMarkPaid: Boolean = true,
+    /**
+     * Months after the transaction date to assign matching payments (0 = current month cycle,
+     * 1 = next month cycle). Set when linking a bill from a Plaid transaction.
+     */
+    val plaidCycleMonthOffset: Int? = null
 )

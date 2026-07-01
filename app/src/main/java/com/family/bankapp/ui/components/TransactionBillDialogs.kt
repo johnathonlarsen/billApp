@@ -11,13 +11,21 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.family.bankapp.data.entity.BillEntity
 import com.family.bankapp.data.entity.PlaidTransactionEntity
 import com.family.bankapp.util.MoneyFormatter
+import com.family.bankapp.util.PlaidBillCycle
+import java.time.LocalDate
 
 enum class TransactionBillAction {
     NEW_BILL,
@@ -187,13 +195,58 @@ fun PickBillForTransactionDialog(
 }
 
 @Composable
+fun PlaidBillCyclePicker(
+    bill: BillEntity,
+    transaction: PlaidTransactionEntity,
+    selected: PlaidBillCycle.Choice,
+    onSelected: (PlaidBillCycle.Choice) -> Unit
+) {
+    val txDate = remember(transaction.plaidTransactionId) {
+        runCatching { LocalDate.parse(transaction.date) }.getOrDefault(LocalDate.now())
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            "Which bill cycle does this payment apply to?",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            "Future matching transactions will use the same rule.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        PlaidBillCycle.Choice.entries.forEach { choice ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSelected(choice) }
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                RadioButton(
+                    selected = selected == choice,
+                    onClick = { onSelected(choice) }
+                )
+                Text(
+                    PlaidBillCycle.describeChoice(bill, txDate, choice),
+                    modifier = Modifier.padding(top = 12.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun ConfirmUpdateBillFromTransactionDialog(
     bill: BillEntity,
     transaction: PlaidTransactionEntity,
     onDismiss: () -> Unit,
-    onConfirm: () -> Unit
+    onConfirm: (cycleMonthOffset: Int) -> Unit
 ) {
     val newName = transaction.merchantName?.takeIf { it.isNotBlank() } ?: transaction.name
+    var cycleChoice by remember(transaction.plaidTransactionId, bill.id) {
+        mutableStateOf(PlaidBillCycle.Choice.NEXT)
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Update bill from transaction?") },
@@ -208,15 +261,16 @@ fun ConfirmUpdateBillFromTransactionDialog(
                     "Amount: ${MoneyFormatter.format(transaction.amountCents)}",
                     style = MaterialTheme.typography.bodyMedium
                 )
-                Text(
-                    "Marks this month's cycle paid if not already.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                PlaidBillCyclePicker(
+                    bill = bill,
+                    transaction = transaction,
+                    selected = cycleChoice,
+                    onSelected = { cycleChoice = it }
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text("Update bill") }
+            TextButton(onClick = { onConfirm(cycleChoice.monthOffset) }) { Text("Update bill") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
@@ -229,9 +283,12 @@ fun ConfirmLinkBillToTransactionDialog(
     bill: BillEntity,
     transaction: PlaidTransactionEntity,
     onDismiss: () -> Unit,
-    onConfirm: () -> Unit
+    onConfirm: (cycleMonthOffset: Int) -> Unit
 ) {
     val pattern = transaction.merchantName?.takeIf { it.isNotBlank() } ?: transaction.name
+    var cycleChoice by remember(transaction.plaidTransactionId, bill.id) {
+        mutableStateOf(PlaidBillCycle.Choice.NEXT)
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Link to ${bill.name}?") },
@@ -241,15 +298,16 @@ fun ConfirmLinkBillToTransactionDialog(
                     "Future Plaid transactions matching \"$pattern\" (similar amount) will auto-mark this bill paid.",
                     style = MaterialTheme.typography.bodySmall
                 )
-                Text(
-                    "This transaction will mark the matching bill cycle paid now.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                PlaidBillCyclePicker(
+                    bill = bill,
+                    transaction = transaction,
+                    selected = cycleChoice,
+                    onSelected = { cycleChoice = it }
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text("Link bill") }
+            TextButton(onClick = { onConfirm(cycleChoice.monthOffset) }) { Text("Link bill") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }

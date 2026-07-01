@@ -14,7 +14,8 @@ data class PlaidTransactionBillDraft(
     val category: BillCategory = BillCategory.OTHER,
     val recurrence: BillRecurrence = BillRecurrence.MONTHLY,
     val reminderDaysBefore: Int = 3,
-    val notes: String = ""
+    val notes: String = "",
+    val cycleMonthOffset: Int = 1
 )
 
 fun PlaidTransactionEntity.toBillDraft(

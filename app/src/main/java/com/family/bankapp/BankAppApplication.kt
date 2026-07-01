@@ -8,12 +8,8 @@ import com.family.bankapp.notifications.NotificationHelper
 import com.family.bankapp.notifications.ReminderScheduler
 import com.family.bankapp.update.AppUpdateDownloadCoordinator
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.launch
 
 class BankAppApplication : Application() {
     lateinit var repository: BankRepository
@@ -49,8 +45,5 @@ class BankAppApplication : Application() {
         settingsRepository = SettingsRepository(this)
         NotificationHelper.createChannel(this)
         ReminderScheduler.schedule(this)
-        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            runCatching { repository.reconcilePlaidBillPayments() }
-        }
     }
 }

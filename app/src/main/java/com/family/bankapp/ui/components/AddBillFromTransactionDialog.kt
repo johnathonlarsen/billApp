@@ -20,12 +20,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.family.bankapp.data.entity.BillEntity
 import com.family.bankapp.data.entity.PlaidTransactionEntity
 import com.family.bankapp.data.model.BillCategory
 import com.family.bankapp.data.model.BillRecurrence
 import com.family.bankapp.plaid.PlaidTransactionBillDraft
 import com.family.bankapp.plaid.toBillDraft
 import com.family.bankapp.util.MoneyFormatter
+import com.family.bankapp.util.PlaidBillCycle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,6 +50,7 @@ fun AddBillFromTransactionDialog(
     var recurrence by remember(initial) { mutableStateOf(initial.recurrence) }
     var linkedAccountId by remember(initial) { mutableStateOf(initial.linkedAccountId) }
     var notes by remember(initial) { mutableStateOf(initial.notes) }
+    var cycleChoice by remember(initial) { mutableStateOf(PlaidBillCycle.Choice.NEXT) }
     var categoryExpanded by remember { mutableStateOf(false) }
     var recurrenceExpanded by remember { mutableStateOf(false) }
     var accountExpanded by remember { mutableStateOf(false) }
@@ -58,6 +61,14 @@ fun AddBillFromTransactionDialog(
 
     val amountValid = MoneyFormatter.parse(amountText) != null
     val dayValid = dueDay.toIntOrNull()?.let { it in 1..28 } == true
+    val previewBill = remember(name, amountText, dueDay, recurrence) {
+        BillEntity(
+            name = name.ifBlank { initial.name },
+            amountCents = MoneyFormatter.parse(amountText) ?: initial.amountCents,
+            dueDayOfMonth = dueDay.toIntOrNull()?.coerceIn(1, 28) ?: initial.dueDayOfMonth,
+            recurrence = recurrence
+        )
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -162,6 +173,12 @@ fun AddBillFromTransactionDialog(
                     label = { Text("Notes") },
                     modifier = Modifier.fillMaxWidth()
                 )
+                PlaidBillCyclePicker(
+                    bill = previewBill,
+                    transaction = transaction,
+                    selected = cycleChoice,
+                    onSelected = { cycleChoice = it }
+                )
             }
         },
         confirmButton = {
@@ -178,7 +195,8 @@ fun AddBillFromTransactionDialog(
                             category = category,
                             recurrence = recurrence,
                             reminderDaysBefore = initial.reminderDaysBefore,
-                            notes = notes.trim()
+                            notes = notes.trim(),
+                            cycleMonthOffset = cycleChoice.monthOffset
                         )
                     )
                 },

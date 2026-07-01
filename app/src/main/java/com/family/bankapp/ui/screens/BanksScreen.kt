@@ -764,8 +764,8 @@ fun BankDetailScreen(
                         TransactionBillAction.LINK_EXISTING
                     )
                 },
-                onConfirm = {
-                    vm.linkTransactionToBill(ui.bill, ui.tx) { result ->
+                onConfirm = { cycleMonthOffset ->
+                    vm.linkTransactionToBill(ui.bill, ui.tx, cycleMonthOffset) { result ->
                         result.onSuccess {
                             transactionBillUi = null
                             plaidStatusMessage =
@@ -787,8 +787,8 @@ fun BankDetailScreen(
                         TransactionBillAction.UPDATE_EXISTING
                     )
                 },
-                onConfirm = {
-                    vm.updateBillFromTransaction(ui.bill, ui.tx) { result ->
+                onConfirm = { cycleMonthOffset ->
+                    vm.updateBillFromTransaction(ui.bill, ui.tx, cycleMonthOffset) { result ->
                         result.onSuccess {
                             transactionBillUi = null
                             plaidStatusMessage =
