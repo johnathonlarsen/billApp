@@ -8,7 +8,7 @@ alwaysApply: true
 When shipping app changes that users should receive via Settings → Check for updates:
 
 1. Bump `versionCode` and `versionName` in `app/build.gradle.kts`.
-2. Run `.\gradlew assembleDebug` (copies `docs/FamilyBank.apk` and regenerates `docs/app-update.json`).
+2. Run `.\gradlew assembleRelease` (copies `docs/FamilyBank.apk` and regenerates `docs/app-update.json`).
 3. Commit the app changes plus `docs/FamilyBank.apk` and `docs/app-update.json`.
 4. Push to `origin/main` so GitHub Pages serves the new manifest and APK.
 

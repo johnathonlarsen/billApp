@@ -44,7 +44,7 @@ See `bills_import_template.csv` in this folder for an example.
 
 ```bash
 cd bankapp
-gradlew.bat assembleDebug
+gradlew.bat assembleRelease
 ```
 
 APK copies to `%USERPROFILE%\OneDrive\FamilyBank.apk` when OneDrive is available.

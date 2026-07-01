@@ -156,7 +156,8 @@ fun AppUpdateSettingsCard(vm: AppUpdateViewModel) {
             }
 
             Text(
-                "Updates are published to GitHub (docs/FamilyBank.apk) after each assembleDebug build.",
+                "Updates install over the existing app when the APK is signed with the same key. " +
+                    "If install fails with a package conflict, uninstall Family Bank once, then install again.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

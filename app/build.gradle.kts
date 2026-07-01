@@ -1,4 +1,5 @@
 import java.time.Instant
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -15,13 +16,30 @@ android {
         applicationId = "com.family.bankapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 39
-        versionName = "1.7.1"
+        versionCode = 40
+        versionName = "1.7.2"
+    }
+
+    signingConfigs {
+        create("release") {
+            val props = rootProject.file("signing.properties")
+            if (props.exists()) {
+                val signing = Properties().apply { props.inputStream().use { load(it) } }
+                storeFile = rootProject.file(signing.getProperty("storeFile"))
+                storePassword = signing.getProperty("storePassword")
+                keyAlias = signing.getProperty("keyAlias")
+                keyPassword = signing.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("release")
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -45,19 +63,19 @@ android {
 
 afterEvaluate {
     tasks.register<Copy>("copyApkToOneDrive") {
-        dependsOn("assembleDebug")
-        from(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
+        dependsOn("assembleRelease")
+        from(layout.buildDirectory.file("outputs/apk/release/app-release.apk"))
         into("${System.getProperty("user.home")}/OneDrive")
         rename { "FamilyBank.apk" }
         onlyIf { file("${System.getProperty("user.home")}/OneDrive").exists() }
     }
 
     tasks.register("publishFamilyApk") {
-        dependsOn("assembleDebug", "copyApkToOneDrive")
+        dependsOn("assembleRelease", "copyApkToOneDrive")
         doLast {
             val versionCode = android.defaultConfig.versionCode
             val versionName = android.defaultConfig.versionName
-            val apkSource = layout.buildDirectory.file("outputs/apk/debug/app-debug.apk").get().asFile
+            val apkSource = layout.buildDirectory.file("outputs/apk/release/app-release.apk").get().asFile
             val apkSizeBytes = apkSource.length()
             val docsDir = rootProject.file("docs")
             docsDir.mkdirs()
@@ -69,7 +87,7 @@ afterEvaluate {
                   "apkUrl": "https://raw.githubusercontent.com/johnathonlarsen/billApp/main/docs/FamilyBank.apk",
                   "apkSizeBytes": $apkSizeBytes,
                   "releasedAt": "${Instant.now()}",
-                  "notes": "Family Bank update"
+                  "notes": "Family Bank update. If install fails with a package conflict, uninstall the old app once, then install again. Future updates will install in place."
                 }
             """.trimIndent()
             docsDir.resolve("app-update.json").writeText(manifest)
@@ -77,7 +95,7 @@ afterEvaluate {
         }
     }
 
-    tasks.named("assembleDebug").configure {
+    tasks.named("assembleRelease").configure {
         finalizedBy("publishFamilyApk")
     }
 }
