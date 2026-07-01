@@ -9,13 +9,11 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
-import kotlin.math.abs
 import kotlin.math.max
 
 object BillTransactionMatcher {
 
     private const val MIN_TOLERANCE_CENTS = 100L
-    private const val TOLERANCE_FRACTION = 0.08
     private const val MAX_MONTHS_BACK_FOR_LATE_PAYMENT = 4
 
     fun transactionDate(tx: PlaidTransactionEntity): LocalDate? =
@@ -42,7 +40,7 @@ object BillTransactionMatcher {
         val pattern = bill.plaidMatchPattern?.takeIf { it.isNotBlank() } ?: return false
         if (tx.amountCents <= 0) return false
         if (!textMatches(tx, pattern)) return false
-        if (!amountsMatch(bill.amountCents, tx.amountCents)) return false
+        if (!amountQualifies(bill.amountCents, tx.amountCents)) return false
         if (!accountMatches(tx, bill, accounts)) return false
         val txDate = transactionDate(tx) ?: return false
         val cycleDue = resolvePaymentCycle(bill, txDate, skips) ?: return false
@@ -59,10 +57,17 @@ object BillTransactionMatcher {
         return haystack.contains(normPattern) || normPattern.contains(haystack)
     }
 
-    fun amountsMatch(expectedCents: Long, actualCents: Long): Boolean {
-        val tolerance = max(MIN_TOLERANCE_CENTS, (expectedCents * TOLERANCE_FRACTION).toLong())
-        return abs(expectedCents - actualCents) <= tolerance
+    /** Payment can be higher than the bill template; small rounding below template is allowed. */
+    fun amountQualifies(templateCents: Long, actualCents: Long): Boolean {
+        if (actualCents <= 0) return false
+        if (templateCents <= 0) return true
+        val minAllowed = max(0L, templateCents - MIN_TOLERANCE_CENTS)
+        return actualCents >= minAllowed
     }
+
+    /** @deprecated Use [amountQualifies] for bill payment matching. */
+    fun amountsMatch(expectedCents: Long, actualCents: Long): Boolean =
+        amountQualifies(expectedCents, actualCents)
 
     fun accountMatches(
         tx: PlaidTransactionEntity,
