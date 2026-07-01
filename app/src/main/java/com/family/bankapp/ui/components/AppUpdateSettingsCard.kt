@@ -156,7 +156,7 @@ fun AppUpdateSettingsCard(vm: AppUpdateViewModel) {
             }
 
             Text(
-                "Publish new builds to GitHub Pages (docs/FamilyBank.apk) after assembleDebug.",
+                "Updates are published to GitHub (docs/FamilyBank.apk) after each assembleDebug build.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

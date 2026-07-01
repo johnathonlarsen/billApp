@@ -9,21 +9,48 @@ import java.net.URL
 
 object AppUpdateClient {
 
+    private val manifestUrls = listOf(
+        FamilyAppConfig.UPDATE_MANIFEST_RAW_URL,
+        FamilyAppConfig.UPDATE_MANIFEST_URL
+    )
+
     suspend fun fetchManifest(): Result<AppUpdateManifest> = withContext(Dispatchers.IO) {
-        runCatching {
-            val conn = (URL(FamilyAppConfig.UPDATE_MANIFEST_URL).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 15_000
-                readTimeout = 15_000
-                setRequestProperty("Cache-Control", "no-cache")
+        var lastError: Throwable? = null
+        for (baseUrl in manifestUrls) {
+            val result = runCatching { fetchManifestFromUrl(baseUrl) }
+            if (result.isSuccess) {
+                return@withContext result
             }
+            lastError = result.exceptionOrNull()
+        }
+        Result.failure(lastError ?: IllegalStateException("Could not check for updates"))
+    }
+
+    private fun fetchManifestFromUrl(baseUrl: String): AppUpdateManifest {
+        val cacheBustUrl = if (baseUrl.contains('?')) {
+            "$baseUrl&_=${System.currentTimeMillis()}"
+        } else {
+            "$baseUrl?_=${System.currentTimeMillis()}"
+        }
+        val conn = (URL(cacheBustUrl).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 15_000
+            readTimeout = 15_000
+            instanceFollowRedirects = true
+            useCaches = false
+            setRequestProperty("Cache-Control", "no-cache, no-store")
+            setRequestProperty("Pragma", "no-cache")
+        }
+        try {
             val code = conn.responseCode
             val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
                 .bufferedReader().readText()
             if (code !in 200..299) {
                 error("Update check failed ($code)")
             }
-            parseManifest(JSONObject(text))
+            return parseManifest(JSONObject(text))
+        } finally {
+            conn.disconnect()
         }
     }
 

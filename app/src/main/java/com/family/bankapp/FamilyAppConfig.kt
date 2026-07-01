@@ -41,10 +41,15 @@ object FamilyAppConfig {
     const val PRIVACY_POLICY_URL = "https://johnathonlarsen.github.io/billApp/privacy-policy.html"
 
     /**
-     * Auto-update manifest on GitHub Pages (docs/app-update.json).
-     * After each build, push docs/ (APK + manifest) and enable Pages on /docs.
+     * Update manifest — raw GitHub updates immediately on push; GitHub Pages can lag behind.
      */
+    const val UPDATE_MANIFEST_RAW_URL =
+        "https://raw.githubusercontent.com/johnathonlarsen/billApp/main/docs/app-update.json"
     const val UPDATE_MANIFEST_URL = "https://johnathonlarsen.github.io/billApp/app-update.json"
+
+    /** APK served from main/docs — same path the publish task writes to. */
+    const val UPDATE_APK_URL =
+        "https://raw.githubusercontent.com/johnathonlarsen/billApp/main/docs/FamilyBank.apk"
 
     fun supabaseConfig(): SupabaseSharedStateClient.Config =
         SupabaseSharedStateClient.Config(

@@ -15,8 +15,8 @@ android {
         applicationId = "com.family.bankapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 38
-        versionName = "1.7.0"
+        versionCode = 39
+        versionName = "1.7.1"
     }
 
     buildTypes {
@@ -66,7 +66,7 @@ afterEvaluate {
                 {
                   "versionCode": $versionCode,
                   "versionName": "$versionName",
-                  "apkUrl": "https://johnathonlarsen.github.io/billApp/FamilyBank.apk",
+                  "apkUrl": "https://raw.githubusercontent.com/johnathonlarsen/billApp/main/docs/FamilyBank.apk",
                   "apkSizeBytes": $apkSizeBytes,
                   "releasedAt": "${Instant.now()}",
                   "notes": "Family Bank update"
