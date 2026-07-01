@@ -134,6 +134,9 @@ interface PaymentRecordDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(record: PaymentRecordEntity): Long
 
+    @Update
+    suspend fun update(record: PaymentRecordEntity)
+
     @Delete
     suspend fun delete(record: PaymentRecordEntity)
 }
@@ -189,6 +192,9 @@ interface PlaidTransactionDao {
 
     @Query("SELECT * FROM plaid_transactions WHERE bankId = :bankId ORDER BY date DESC")
     suspend fun getByBankSync(bankId: Long): List<com.family.bankapp.data.entity.PlaidTransactionEntity>
+
+    @Query("SELECT * FROM plaid_transactions ORDER BY date DESC")
+    suspend fun getAllSync(): List<com.family.bankapp.data.entity.PlaidTransactionEntity>
 }
 
 @Dao
@@ -204,6 +210,9 @@ interface PlaidPaymentLinkDao {
 
     @Query("SELECT * FROM plaid_payment_links")
     fun observeAll(): Flow<List<PlaidPaymentLinkEntity>>
+
+    @Query("SELECT * FROM plaid_payment_links")
+    suspend fun getAllSync(): List<PlaidPaymentLinkEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(link: PlaidPaymentLinkEntity)
