@@ -235,45 +235,53 @@ private fun MonthDetailCard(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    if (!entry.isPaid && onRemoveBillFromMonth != null) {
-                                        IconButton(onClick = { onRemoveBillFromMonth(entry) }) {
+                                if (entry.isPaid) {
+                                    Text(
+                                        "Paid",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = PillGreen
+                                    )
+                                    if (onEditBillPayment != null) {
+                                        OutlinedButton(
+                                            onClick = { onEditBillPayment(entry) },
+                                            modifier = Modifier.padding(top = 4.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
                                             Icon(
-                                                Icons.Default.Close,
-                                                contentDescription = "Remove from this month"
+                                                Icons.Default.Edit,
+                                                contentDescription = null,
+                                                modifier = Modifier.padding(end = 4.dp)
                                             )
+                                            Text("Edit", style = MaterialTheme.typography.labelSmall)
                                         }
                                     }
-                                    if (entry.isPaid) {
-                                        if (onEditBillPayment != null) {
-                                            IconButton(onClick = { onEditBillPayment(entry) }) {
+                                } else {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        if (onRemoveBillFromMonth != null) {
+                                            IconButton(onClick = { onRemoveBillFromMonth(entry) }) {
                                                 Icon(
-                                                    Icons.Default.Edit,
-                                                    contentDescription = "Edit payment"
+                                                    Icons.Default.Close,
+                                                    contentDescription = "Remove from this month"
                                                 )
                                             }
                                         }
-                                        Text(
-                                            "Paid",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = PillGreen
-                                        )
-                                    } else if (onMarkBillPaid != null) {
-                                        Button(
-                                            onClick = { onMarkBillPaid(entry) },
-                                            modifier = Modifier.padding(top = 4.dp)
-                                        ) {
-                                            Text("Mark paid", style = MaterialTheme.typography.labelSmall)
+                                        if (onMarkBillPaid != null) {
+                                            Button(
+                                                onClick = { onMarkBillPaid(entry) },
+                                                modifier = Modifier.padding(top = 4.dp)
+                                            ) {
+                                                Text("Mark paid", style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        } else {
+                                            Text(
+                                                "Unpaid",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = PillYellow
+                                            )
                                         }
-                                    } else {
-                                        Text(
-                                            "Unpaid",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = PillYellow
-                                        )
                                     }
                                 }
                             }
