@@ -406,15 +406,19 @@ class BankRepository(
         if (bills.isEmpty()) return 0
 
         val accounts = accountDao.getAllSync()
+        val payments = paymentRecordDao.getAllSync()
+        val skips = billCycleSkipDao.getAllSync()
         val linkedIds = plaidPaymentLinkDao.getAllLinkedTransactionIds().toSet()
         val transactions = plaidTransactionDao.getByBankSync(bankId)
             .filter { it.amountCents > 0 && !it.pending && it.plaidTransactionId !in linkedIds }
 
         var applied = 0
         for (tx in transactions) {
-            val matches = bills.filter { BillTransactionMatcher.transactionMatchesBill(tx, it, accounts) }
+            val matches = bills.filter {
+                BillTransactionMatcher.transactionMatchesBill(tx, it, accounts, payments, skips)
+            }
             if (matches.size != 1) continue
-            markBillPaidFromTransaction(matches.single(), tx, accounts)
+            markBillPaidFromTransaction(matches.single(), tx, accounts, enforceDueDate = true)
             applied++
         }
         return applied
@@ -423,13 +427,29 @@ class BankRepository(
     private suspend fun markBillPaidFromTransaction(
         bill: BillEntity,
         tx: PlaidTransactionEntity,
-        accounts: List<AccountEntity>
+        accounts: List<AccountEntity>,
+        enforceDueDate: Boolean = false
     ) {
         val existingLink = plaidPaymentLinkDao.getByTransactionId(tx.plaidTransactionId)
         if (existingLink?.paymentRecordId != null) return
 
-        val txDate = runCatching { LocalDate.parse(tx.date) }.getOrDefault(LocalDate.now())
-        val cycleDue = BillTransactionMatcher.cycleDueDateForTransaction(bill, txDate)
+        val txDate = BillTransactionMatcher.transactionDate(tx) ?: LocalDate.now()
+        val skips = billCycleSkipDao.getAllSync()
+        val cycleDue = BillTransactionMatcher.resolvePaymentCycle(bill, txDate, skips)
+            ?: if (enforceDueDate) {
+                null
+            } else {
+                BillSchedule.dueDateForYearMonth(bill, java.time.YearMonth.from(txDate))
+            }
+        if (cycleDue == null) {
+            plaidPaymentLinkDao.insert(
+                PlaidPaymentLinkEntity(
+                    plaidTransactionId = tx.plaidTransactionId,
+                    billId = bill.id
+                )
+            )
+            return
+        }
         val cycleMillis = BillSchedule.toCycleMillis(cycleDue)
         if (paymentRecordDao.getForCycle(bill.id, cycleMillis) != null) {
             plaidPaymentLinkDao.insert(

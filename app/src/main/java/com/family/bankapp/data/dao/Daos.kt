@@ -119,6 +119,9 @@ interface PaymentRecordDao {
     @Query("SELECT * FROM payment_records WHERE id = :id")
     suspend fun getById(id: Long): PaymentRecordEntity?
 
+    @Query("SELECT * FROM payment_records ORDER BY paidAt DESC")
+    suspend fun getAllSync(): List<PaymentRecordEntity>
+
     @Query("SELECT * FROM payment_records WHERE billId = :billId AND cycleDueDateMillis = :cycleDueDateMillis LIMIT 1")
     suspend fun getForCycle(billId: Long, cycleDueDateMillis: Long): PaymentRecordEntity?
 
@@ -139,6 +142,9 @@ interface PaymentRecordDao {
 interface BillCycleSkipDao {
     @Query("SELECT * FROM bill_cycle_skips ORDER BY cycleDueDateMillis DESC")
     fun observeAll(): Flow<List<BillCycleSkipEntity>>
+
+    @Query("SELECT * FROM bill_cycle_skips ORDER BY cycleDueDateMillis DESC")
+    suspend fun getAllSync(): List<BillCycleSkipEntity>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(skip: BillCycleSkipEntity): Long

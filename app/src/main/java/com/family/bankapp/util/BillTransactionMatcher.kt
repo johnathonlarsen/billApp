@@ -1,9 +1,11 @@
 package com.family.bankapp.util
 
 import com.family.bankapp.data.entity.AccountEntity
+import com.family.bankapp.data.entity.BillCycleSkipEntity
 import com.family.bankapp.data.entity.BillEntity
+import com.family.bankapp.data.entity.PaymentRecordEntity
 import com.family.bankapp.data.entity.PlaidTransactionEntity
-import com.family.bankapp.data.model.BillRecurrence
+import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
@@ -14,6 +16,10 @@ object BillTransactionMatcher {
 
     private const val MIN_TOLERANCE_CENTS = 100L
     private const val TOLERANCE_FRACTION = 0.08
+    private const val MAX_MONTHS_BACK_FOR_LATE_PAYMENT = 4
+
+    fun transactionDate(tx: PlaidTransactionEntity): LocalDate? =
+        runCatching { LocalDate.parse(tx.date) }.getOrNull()
 
     fun matchPatternFromTransaction(tx: PlaidTransactionEntity): String {
         val raw = tx.merchantName?.takeIf { it.isNotBlank() } ?: tx.name
@@ -29,13 +35,18 @@ object BillTransactionMatcher {
     fun transactionMatchesBill(
         tx: PlaidTransactionEntity,
         bill: BillEntity,
-        accounts: List<AccountEntity>
+        accounts: List<AccountEntity>,
+        payments: List<PaymentRecordEntity> = emptyList(),
+        skips: List<BillCycleSkipEntity> = emptyList()
     ): Boolean {
         val pattern = bill.plaidMatchPattern?.takeIf { it.isNotBlank() } ?: return false
         if (tx.amountCents <= 0) return false
         if (!textMatches(tx, pattern)) return false
         if (!amountsMatch(bill.amountCents, tx.amountCents)) return false
         if (!accountMatches(tx, bill, accounts)) return false
+        val txDate = transactionDate(tx) ?: return false
+        val cycleDue = resolvePaymentCycle(bill, txDate, skips) ?: return false
+        if (BillSchedule.paymentForCycle(payments, bill.id, cycleDue) != null) return false
         return true
     }
 
@@ -64,15 +75,34 @@ object BillTransactionMatcher {
         return plaidId == tx.plaidAccountId
     }
 
-    fun cycleDueDateForTransaction(bill: BillEntity, txDate: LocalDate): LocalDate =
-        when (bill.recurrence) {
-            BillRecurrence.MONTHLY ->
-                BillSchedule.dueDateForYearMonth(bill, YearMonth.from(txDate))
-            BillRecurrence.YEARLY ->
-                BillSchedule.dueDateForYearMonth(bill, YearMonth.of(txDate.year, 1))
-            BillRecurrence.WEEKLY, BillRecurrence.BIWEEKLY, BillRecurrence.ONE_TIME ->
-                BillSchedule.dueDateForYearMonth(bill, YearMonth.from(txDate))
+    /**
+     * Finds the bill cycle this payment applies to. The transaction date must be on or after
+     * that cycle's due date (supports late payments in the following month).
+     */
+    fun resolvePaymentCycle(
+        bill: BillEntity,
+        txDate: LocalDate,
+        skips: List<BillCycleSkipEntity> = emptyList()
+    ): LocalDate? {
+        val trackingStart = YearMonth.from(
+            Instant.ofEpochMilli(bill.trackingStartMillis)
+                .atZone(ZoneId.systemDefault())
+                .toLocalDate()
+        )
+        var month = YearMonth.from(txDate)
+
+        repeat(MAX_MONTHS_BACK_FOR_LATE_PAYMENT) {
+            if (month.isBefore(trackingStart)) return null
+            if (MonthTimeline.billAppliesToMonth(bill, month)) {
+                val due = BillSchedule.dueDateForYearMonth(bill, month)
+                if (!BillSchedule.isCycleSkipped(skips, bill.id, due) && !txDate.isBefore(due)) {
+                    return due
+                }
+            }
+            month = month.minusMonths(1)
         }
+        return null
+    }
 
     fun paidAtMillisFromTransaction(tx: PlaidTransactionEntity): Long =
         runCatching { LocalDate.parse(tx.date) }
