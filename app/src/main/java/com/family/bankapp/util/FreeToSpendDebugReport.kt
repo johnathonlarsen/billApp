@@ -33,8 +33,7 @@ object FreeToSpendDebugReport {
         appendLine()
 
         appendLine("=== Formula ===")
-        appendLine(formulaLine(snapshot))
-        appendLine("= ${MoneyFormatter.format(snapshot.freeToSpendCents)} free to spend")
+        appendFormulaBreakdown(snapshot)
         appendLine()
 
         appendLine("=== Result ===")
@@ -107,18 +106,20 @@ object FreeToSpendDebugReport {
         appendLine("Linked Plaid transactions: ${overview.linkedPlaidTransactionIds.size}")
     }.trimEnd()
 
-    private fun StringBuilder.formulaLine(snapshot: FreeToSpendSnapshot): String = buildString {
-        append("Income ${MoneyFormatter.format(snapshot.monthlyIncomeCents)}")
-        append(" - bills ${MoneyFormatter.format(snapshot.fixedBillsThisMonthCents)}")
-        if (snapshot.miscPaidThisMonthCents > 0) {
-            append(" - misc ${MoneyFormatter.format(snapshot.miscPaidThisMonthCents)}")
-        }
-        if (snapshot.plaidMiscSpentCents > 0) {
-            append(" - spending ${MoneyFormatter.format(snapshot.plaidMiscSpentCents)}")
-        }
-        if (snapshot.priorOverdueUnpaidCents > 0) {
-            append(" - prior ${MoneyFormatter.format(snapshot.priorOverdueUnpaidCents)}")
-        }
+    private fun StringBuilder.appendFormulaBreakdown(snapshot: FreeToSpendSnapshot) {
+        appendLine("Income:              ${MoneyFormatter.format(snapshot.monthlyIncomeCents)}")
+        appendLine("  - bills:           ${MoneyFormatter.format(snapshot.fixedBillsThisMonthCents)}")
+        appendLine("  - misc (paid):     ${MoneyFormatter.format(snapshot.miscPaidThisMonthCents)}")
+        appendLine("  - spending (Plaid): ${MoneyFormatter.format(snapshot.plaidMiscSpentCents)}")
+        appendLine("  - prior overdue:   ${MoneyFormatter.format(snapshot.priorOverdueUnpaidCents)}")
+        appendLine("= ${MoneyFormatter.format(snapshot.freeToSpendCents)} free to spend")
+        appendLine(
+            "Compact: Income ${MoneyFormatter.format(snapshot.monthlyIncomeCents)}" +
+                " - bills ${MoneyFormatter.format(snapshot.fixedBillsThisMonthCents)}" +
+                " - misc ${MoneyFormatter.format(snapshot.miscPaidThisMonthCents)}" +
+                " - spending ${MoneyFormatter.format(snapshot.plaidMiscSpentCents)}" +
+                " - prior ${MoneyFormatter.format(snapshot.priorOverdueUnpaidCents)}"
+        )
     }
 
     private fun StringBuilder.appendCurrentMonthBills(
