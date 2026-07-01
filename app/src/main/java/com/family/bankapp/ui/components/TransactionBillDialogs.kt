@@ -22,19 +22,22 @@ import com.family.bankapp.util.MoneyFormatter
 enum class TransactionBillAction {
     NEW_BILL,
     LINK_EXISTING,
-    UPDATE_EXISTING
+    UPDATE_EXISTING,
+    UNLINK
 }
 
 @Composable
 fun TransactionBillActionDialog(
     transaction: PlaidTransactionEntity,
+    linkedBillName: String? = null,
     onDismiss: () -> Unit,
     onSelect: (TransactionBillAction) -> Unit
 ) {
     val label = transaction.merchantName?.takeIf { it.isNotBlank() } ?: transaction.name
+    val isLinked = !linkedBillName.isNullOrBlank()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Bill from transaction") },
+        title = { Text(if (isLinked) "Linked transaction" else "Bill from transaction") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(label, fontWeight = FontWeight.SemiBold)
@@ -43,31 +46,93 @@ fun TransactionBillActionDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Text(
-                    "Choose how to use this transaction for bill tracking.",
-                    style = MaterialTheme.typography.bodySmall
-                )
-                TextButton(
-                    onClick = { onSelect(TransactionBillAction.NEW_BILL) },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Add as new bill")
-                }
-                TextButton(
-                    onClick = { onSelect(TransactionBillAction.LINK_EXISTING) },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Link to existing bill")
-                }
-                TextButton(
-                    onClick = { onSelect(TransactionBillAction.UPDATE_EXISTING) },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Update existing bill from this")
+                if (isLinked) {
+                    Text(
+                        "Linked to $linkedBillName",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        "Change the link or remove it. The bill itself stays on your list.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    TextButton(
+                        onClick = { onSelect(TransactionBillAction.UNLINK) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Unlink from bill")
+                    }
+                    TextButton(
+                        onClick = { onSelect(TransactionBillAction.LINK_EXISTING) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Link to a different bill")
+                    }
+                    TextButton(
+                        onClick = { onSelect(TransactionBillAction.UPDATE_EXISTING) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Update bill from this")
+                    }
+                } else {
+                    Text(
+                        "Choose how to use this transaction for bill tracking.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    TextButton(
+                        onClick = { onSelect(TransactionBillAction.NEW_BILL) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Add as new bill")
+                    }
+                    TextButton(
+                        onClick = { onSelect(TransactionBillAction.LINK_EXISTING) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Link to existing bill")
+                    }
+                    TextButton(
+                        onClick = { onSelect(TransactionBillAction.UPDATE_EXISTING) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Update existing bill from this")
+                    }
                 }
             }
         },
         confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+fun ConfirmUnlinkBillFromTransactionDialog(
+    billName: String,
+    transaction: PlaidTransactionEntity,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Unlink from $billName?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Removes the link between this transaction and the bill.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(
+                    "If this transaction marked the bill paid, that payment will be undone too.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("Unlink") }
+        },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
         }

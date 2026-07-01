@@ -390,6 +390,16 @@ class BankRepository(
         return updated
     }
 
+    suspend fun unlinkBillFromTransaction(tx: PlaidTransactionEntity) {
+        val link = plaidPaymentLinkDao.getByTransactionId(tx.plaidTransactionId)
+        val paymentId = link?.paymentRecordId
+            ?: paymentRecordDao.getByPlaidTransactionId(tx.plaidTransactionId)?.id
+        if (paymentId != null) {
+            undoBillPayment(paymentId)
+        }
+        plaidPaymentLinkDao.deleteByTransactionId(tx.plaidTransactionId)
+    }
+
     suspend fun applyAutoBillPaymentsForBank(bankId: Long): Int {
         val bills = billDao.getActiveSync()
             .filter { it.plaidAutoMarkPaid && !it.plaidMatchPattern.isNullOrBlank() }

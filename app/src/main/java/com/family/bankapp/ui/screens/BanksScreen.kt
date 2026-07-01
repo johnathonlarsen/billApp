@@ -65,6 +65,7 @@ import com.family.bankapp.plaid.PlaidNameMatcher
 import com.family.bankapp.plaid.PlaidRestorableItem
 import com.family.bankapp.ui.components.AddBillFromTransactionDialog
 import com.family.bankapp.ui.components.ConfirmLinkBillToTransactionDialog
+import com.family.bankapp.ui.components.ConfirmUnlinkBillFromTransactionDialog
 import com.family.bankapp.ui.components.ConfirmUpdateBillFromTransactionDialog
 import com.family.bankapp.ui.components.PickBillForTransactionDialog
 import com.family.bankapp.ui.components.PlaidUsageTrackerCard
@@ -632,7 +633,12 @@ fun BankDetailScreen(
                                     isBillLinked = link != null,
                                     linkedBillName = link?.billId?.let { billNameById[it] },
                                     onBillAction = if (tx.canAddAsBill()) {
-                                        { transactionBillUi = TransactionBillUiState.ChooseAction(tx) }
+                                        {
+                                            transactionBillUi = TransactionBillUiState.ChooseAction(
+                                                tx = tx,
+                                                linkedBillName = link?.billId?.let { billNameById[it] }
+                                            )
+                                        }
                                     } else {
                                         null
                                     }
@@ -661,14 +667,28 @@ fun BankDetailScreen(
         is TransactionBillUiState.ChooseAction -> {
             TransactionBillActionDialog(
                 transaction = ui.tx,
+                linkedBillName = ui.linkedBillName,
                 onDismiss = { transactionBillUi = null },
                 onSelect = { action ->
                     transactionBillUi = when (action) {
                         TransactionBillAction.NEW_BILL -> TransactionBillUiState.NewBill(ui.tx)
                         TransactionBillAction.LINK_EXISTING ->
-                            TransactionBillUiState.PickBill(ui.tx, TransactionBillAction.LINK_EXISTING)
+                            TransactionBillUiState.PickBill(
+                                ui.tx,
+                                TransactionBillAction.LINK_EXISTING,
+                                ui.linkedBillName
+                            )
                         TransactionBillAction.UPDATE_EXISTING ->
-                            TransactionBillUiState.PickBill(ui.tx, TransactionBillAction.UPDATE_EXISTING)
+                            TransactionBillUiState.PickBill(
+                                ui.tx,
+                                TransactionBillAction.UPDATE_EXISTING,
+                                ui.linkedBillName
+                            )
+                        TransactionBillAction.UNLINK ->
+                            TransactionBillUiState.ConfirmUnlink(
+                                ui.tx,
+                                ui.linkedBillName ?: "bill"
+                            )
                     }
                 }
             )
@@ -720,7 +740,9 @@ fun BankDetailScreen(
                     "Pick a bill to update from this transaction (name, amount, match pattern)."
                 },
                 bills = activeBills,
-                onDismiss = { transactionBillUi = TransactionBillUiState.ChooseAction(ui.tx) },
+                onDismiss = {
+                    transactionBillUi = TransactionBillUiState.ChooseAction(ui.tx, ui.linkedBillName)
+                },
                 onPick = { bill ->
                     transactionBillUi = when (ui.action) {
                         TransactionBillAction.LINK_EXISTING ->
@@ -773,6 +795,25 @@ fun BankDetailScreen(
                                 "Updated \"${ui.bill.name}\" from transaction for all future months."
                         }.onFailure { e ->
                             plaidStatusMessage = e.message ?: "Could not update bill"
+                        }
+                    }
+                }
+            )
+        }
+        is TransactionBillUiState.ConfirmUnlink -> {
+            ConfirmUnlinkBillFromTransactionDialog(
+                billName = ui.billName,
+                transaction = ui.tx,
+                onDismiss = {
+                    transactionBillUi = TransactionBillUiState.ChooseAction(ui.tx, ui.billName)
+                },
+                onConfirm = {
+                    vm.unlinkTransactionFromBill(ui.tx) { result ->
+                        result.onSuccess {
+                            transactionBillUi = null
+                            plaidStatusMessage = "Unlinked transaction from ${ui.billName}."
+                        }.onFailure { e ->
+                            plaidStatusMessage = e.message ?: "Could not unlink"
                         }
                     }
                 }
@@ -1376,11 +1417,19 @@ private fun AccountDialog(
 }
 
 private sealed interface TransactionBillUiState {
-    data class ChooseAction(val tx: PlaidTransactionEntity) : TransactionBillUiState
+    data class ChooseAction(
+        val tx: PlaidTransactionEntity,
+        val linkedBillName: String? = null
+    ) : TransactionBillUiState
     data class NewBill(val tx: PlaidTransactionEntity) : TransactionBillUiState
-    data class PickBill(val tx: PlaidTransactionEntity, val action: TransactionBillAction) : TransactionBillUiState
+    data class PickBill(
+        val tx: PlaidTransactionEntity,
+        val action: TransactionBillAction,
+        val linkedBillName: String? = null
+    ) : TransactionBillUiState
     data class ConfirmLink(val tx: PlaidTransactionEntity, val bill: BillEntity) : TransactionBillUiState
     data class ConfirmUpdate(val tx: PlaidTransactionEntity, val bill: BillEntity) : TransactionBillUiState
+    data class ConfirmUnlink(val tx: PlaidTransactionEntity, val billName: String) : TransactionBillUiState
 }
 
 private fun appendPlaidSyncSummary(builder: StringBuilder, sync: PlaidBankSyncResult) {

@@ -323,6 +323,18 @@ class BanksViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun unlinkTransactionFromBill(
+        tx: com.family.bankapp.data.entity.PlaidTransactionEntity,
+        onResult: (Result<Unit>) -> Unit
+    ) {
+        viewModelScope.launch {
+            onResult(runCatching {
+                repository.unlinkBillFromTransaction(tx)
+                Unit
+            })
+        }
+    }
+
     fun updateBillFromTransaction(
         bill: com.family.bankapp.data.entity.BillEntity,
         tx: com.family.bankapp.data.entity.PlaidTransactionEntity,

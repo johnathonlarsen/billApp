@@ -125,6 +125,9 @@ interface PaymentRecordDao {
     @Query("SELECT * FROM payment_records WHERE billId = :billId ORDER BY paidAt DESC LIMIT 1")
     suspend fun getLatestForBill(billId: Long): PaymentRecordEntity?
 
+    @Query("SELECT * FROM payment_records WHERE plaidTransactionId = :txId LIMIT 1")
+    suspend fun getByPlaidTransactionId(txId: String): PaymentRecordEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(record: PaymentRecordEntity): Long
 
