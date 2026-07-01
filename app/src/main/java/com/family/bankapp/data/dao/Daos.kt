@@ -193,6 +193,9 @@ interface PlaidPaymentLinkDao {
     @Query("SELECT plaidTransactionId FROM plaid_payment_links")
     fun observeLinkedTransactionIds(): Flow<List<String>>
 
+    @Query("SELECT * FROM plaid_payment_links")
+    fun observeAll(): Flow<List<PlaidPaymentLinkEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(link: PlaidPaymentLinkEntity)
 

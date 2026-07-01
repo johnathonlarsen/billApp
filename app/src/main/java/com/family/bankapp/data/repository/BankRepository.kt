@@ -48,6 +48,10 @@ class BankRepository(
     fun observeAccountsByBank(bankId: Long): Flow<List<AccountEntity>> = accountDao.observeByBank(bankId)
     fun observePlaidTransactionsByBank(bankId: Long): Flow<List<PlaidTransactionEntity>> =
         plaidTransactionDao.observeByBank(bankId)
+
+    fun observePlaidPaymentLinks(): Flow<List<PlaidPaymentLinkEntity>> =
+        plaidPaymentLinkDao.observeAll()
+
     fun observeActiveBills(): Flow<List<BillEntity>> = billDao.observeActive()
     fun observePaymentHistory(billId: Long): Flow<List<PaymentRecordEntity>> =
         paymentRecordDao.observeByBill(billId)

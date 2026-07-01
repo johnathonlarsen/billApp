@@ -307,6 +307,9 @@ class BanksViewModel(application: Application) : AndroidViewModel(application) {
     val activeBills = repository.observeActiveBills()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val plaidPaymentLinks = repository.observePlaidPaymentLinks()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     fun linkTransactionToBill(
         bill: com.family.bankapp.data.entity.BillEntity,
         tx: com.family.bankapp.data.entity.PlaidTransactionEntity,

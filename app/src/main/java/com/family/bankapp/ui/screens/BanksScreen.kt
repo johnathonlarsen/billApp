@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -233,6 +234,11 @@ fun BankDetailScreen(
 
     val plaidTransactions by vm.observePlaidTransactions(bankId).collectAsState(initial = emptyList())
     val activeBills by vm.activeBills.collectAsState()
+    val plaidPaymentLinks by vm.plaidPaymentLinks.collectAsState()
+    val billNameById = remember(activeBills) { activeBills.associate { it.id to it.name } }
+    val linkByTransactionId = remember(plaidPaymentLinks) {
+        plaidPaymentLinks.associateBy { it.plaidTransactionId }
+    }
     val accountTabs = remember(plaidTransactions, item?.accounts) {
         buildAccountTransactionTabs(item?.accounts.orEmpty(), plaidTransactions)
     }
@@ -620,9 +626,12 @@ fun BankDetailScreen(
                             }
 
                             items(pageTransactions, key = { it.plaidTransactionId }) { tx ->
+                                val link = linkByTransactionId[tx.plaidTransactionId]
                                 PlaidTransactionRow(
                                     tx = tx,
-                                    onAddAsBill = if (tx.canAddAsBill()) {
+                                    isBillLinked = link != null,
+                                    linkedBillName = link?.billId?.let { billNameById[it] },
+                                    onBillAction = if (tx.canAddAsBill()) {
                                         { transactionBillUi = TransactionBillUiState.ChooseAction(tx) }
                                     } else {
                                         null
@@ -1170,7 +1179,9 @@ private fun TransactionPageControls(
 @Composable
 private fun PlaidTransactionRow(
     tx: PlaidTransactionEntity,
-    onAddAsBill: (() -> Unit)? = null
+    isBillLinked: Boolean = false,
+    linkedBillName: String? = null,
+    onBillAction: (() -> Unit)? = null
 ) {
     val amountLabel = if (tx.amountCents >= 0) {
         "-${MoneyFormatter.format(tx.amountCents)}"
@@ -1194,6 +1205,13 @@ private fun PlaidTransactionRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (isBillLinked) {
+                    Text(
+                        linkedBillName?.let { "Linked · $it" } ?: "Linked to bill",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
             Text(
                 amountLabel,
@@ -1204,9 +1222,13 @@ private fun PlaidTransactionRow(
                     MaterialTheme.colorScheme.primary
                 }
             )
-            if (onAddAsBill != null) {
-                IconButton(onClick = onAddAsBill) {
-                    Icon(Icons.Default.Add, contentDescription = "Add as bill")
+            if (onBillAction != null) {
+                IconButton(onClick = onBillAction) {
+                    Icon(
+                        imageVector = if (isBillLinked) Icons.Default.Check else Icons.Default.Add,
+                        contentDescription = if (isBillLinked) "Modify bill link" else "Link to bill",
+                        tint = if (isBillLinked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                    )
                 }
             }
         }
