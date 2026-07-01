@@ -169,6 +169,9 @@ interface PlaidTransactionDao {
     )
     fun observeByBank(bankId: Long): Flow<List<com.family.bankapp.data.entity.PlaidTransactionEntity>>
 
+    @Query("SELECT * FROM plaid_transactions ORDER BY date DESC, plaidTransactionId DESC")
+    fun observeAll(): Flow<List<com.family.bankapp.data.entity.PlaidTransactionEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(transactions: List<com.family.bankapp.data.entity.PlaidTransactionEntity>)
 
@@ -186,6 +189,9 @@ interface PlaidPaymentLinkDao {
 
     @Query("SELECT plaidTransactionId FROM plaid_payment_links")
     suspend fun getAllLinkedTransactionIds(): List<String>
+
+    @Query("SELECT plaidTransactionId FROM plaid_payment_links")
+    fun observeLinkedTransactionIds(): Flow<List<String>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(link: PlaidPaymentLinkEntity)

@@ -66,9 +66,22 @@ class BankRepository(
             paymentRecordDao.observeAll(),
             incomeDao.observeActive(),
             billCycleSkipDao.observeAll()
-        ) { payments, incomes, skips -> Triple(payments, incomes, skips) }
-    ) { (banks, accounts, bills), (payments, incomes, skips) ->
-        OverviewData(banks, accounts, bills, payments, incomes, skips)
+        ) { payments, incomes, skips -> Triple(payments, incomes, skips) },
+        combine(
+            plaidTransactionDao.observeAll(),
+            plaidPaymentLinkDao.observeLinkedTransactionIds()
+        ) { transactions, linkedIds -> Pair(transactions, linkedIds.toSet()) }
+    ) { (banks, accounts, bills), (payments, incomes, skips), (transactions, linkedIds) ->
+        OverviewData(
+            banks = banks,
+            accounts = accounts,
+            bills = bills,
+            payments = payments,
+            incomes = incomes,
+            billCycleSkips = skips,
+            plaidTransactions = transactions,
+            linkedPlaidTransactionIds = linkedIds
+        )
     }
 
     suspend fun getBank(id: Long): BankEntity? = bankDao.getById(id)
@@ -482,5 +495,7 @@ data class OverviewData(
     val bills: List<BillEntity>,
     val payments: List<PaymentRecordEntity> = emptyList(),
     val incomes: List<IncomeEntity> = emptyList(),
-    val billCycleSkips: List<BillCycleSkipEntity> = emptyList()
+    val billCycleSkips: List<BillCycleSkipEntity> = emptyList(),
+    val plaidTransactions: List<PlaidTransactionEntity> = emptyList(),
+    val linkedPlaidTransactionIds: Set<String> = emptySet()
 )

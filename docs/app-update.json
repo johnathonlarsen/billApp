@@ -1,8 +1,8 @@
 {
-  "versionCode": 31,
-  "versionName": "1.6.3",
+  "versionCode": 32,
+  "versionName": "1.6.4",
   "apkUrl": "https://johnathonlarsen.github.io/billApp/FamilyBank.apk",
-  "apkSizeBytes": 23461631,
-  "releasedAt": "2026-06-28T13:14:32.108454Z",
+  "apkSizeBytes": 23461627,
+  "releasedAt": "2026-07-01T12:41:44.803338500Z",
   "notes": "Family Bank update"
 }

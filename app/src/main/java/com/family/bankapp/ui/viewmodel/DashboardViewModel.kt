@@ -70,6 +70,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 incomes = overview.incomes,
                 payments = payments,
                 skips = overview.billCycleSkips,
+                plaidTransactions = overview.plaidTransactions,
+                linkedPlaidTransactionIds = overview.linkedPlaidTransactionIds,
                 includePriorOverdue = includePriorOverdue
             )
         } else {

@@ -241,39 +241,54 @@ private fun FreeToSpendCard(fts: FreeToSpendSnapshot) {
             )
             Text(
                 if (isShort) {
-                    "${MoneyFormatter.format(-fts.freeToSpendCents)} more owed than " +
-                        if (fts.usesIncomeAsSpendingPool) "your monthly income covers" else "your balance covers"
+                    "${MoneyFormatter.format(-fts.freeToSpendCents)} over your ${fts.currentMonthLabel} budget"
                 } else {
-                    "After ${fts.currentMonthLabel} bills still owed"
+                    "Left from ${fts.currentMonthLabel} income after bills & misc spent"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                if (fts.usesIncomeAsSpendingPool) {
-                    "Monthly income ${MoneyFormatter.format(fts.spendingPoolCents)} − " +
-                        "bills owed ${MoneyFormatter.format(fts.totalCommittedBillsCents)} " +
-                        "(${MoneyFormatter.format(fts.currentMonthUnpaidCents)} this month" +
-                        if (fts.priorOverdueUnpaidCents > 0) {
-                            ", ${MoneyFormatter.format(fts.priorOverdueUnpaidCents)} prior"
-                        } else {
-                            ""
-                        } + ") · no account balance synced"
-                } else {
-                    "Balance ${MoneyFormatter.format(fts.spendingPoolCents)} − " +
-                        "bills owed ${MoneyFormatter.format(fts.totalCommittedBillsCents)} " +
-                        "(${MoneyFormatter.format(fts.currentMonthUnpaidCents)} this month" +
-                        if (fts.priorOverdueUnpaidCents > 0) {
-                            ", ${MoneyFormatter.format(fts.priorOverdueUnpaidCents)} prior"
-                        } else {
-                            ""
-                        } + ")"
+                buildString {
+                    append("Income ${MoneyFormatter.format(fts.monthlyIncomeCents)}")
+                    append(" − bills ${MoneyFormatter.format(fts.fixedBillsThisMonthCents)}")
+                    if (fts.miscPaidThisMonthCents > 0) {
+                        append(" − misc ${MoneyFormatter.format(fts.miscPaidThisMonthCents)}")
+                    }
+                    if (fts.plaidMiscSpentCents > 0) {
+                        append(" − spending ${MoneyFormatter.format(fts.plaidMiscSpentCents)}")
+                    }
+                    if (fts.priorOverdueUnpaidCents > 0) {
+                        append(" − prior ${MoneyFormatter.format(fts.priorOverdueUnpaidCents)}")
+                    }
                 },
                 style = MaterialTheme.typography.bodySmall
             )
+            if (fts.miscUnpaidThisMonthCents > 0) {
+                Text(
+                    "Other bills not paid yet (${MoneyFormatter.format(fts.miscUnpaidThisMonthCents)}) " +
+                        "don't reduce this until marked paid.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (fts.plaidMiscSpentCents > 0) {
+                Text(
+                    "Spending = Plaid debits this month not linked to a bill.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             if (fts.priorOverdueUnpaidCents > 0 && fts.includePriorOverdue) {
                 Text(
-                    "Prior unpaid counts from when each bill was added — mark paid or turn off in Settings.",
+                    "Prior unpaid bills count from when each bill was added — mark paid or turn off in Settings.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (fts.liquidBalanceCents > 0) {
+                Text(
+                    "Account balance (reference): ${MoneyFormatter.format(fts.liquidBalanceCents)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
