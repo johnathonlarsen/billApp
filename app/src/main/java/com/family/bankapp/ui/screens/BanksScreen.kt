@@ -12,12 +12,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -59,6 +62,7 @@ import com.family.bankapp.data.entity.PlaidTransactionEntity
 import com.family.bankapp.data.model.AccountType
 import com.family.bankapp.data.model.BillRecurrence
 import com.family.bankapp.util.MoneyFormatter
+import com.family.bankapp.util.PlaidTransactionSearch
 import com.family.bankapp.data.repository.BankRepository
 import com.family.bankapp.plaid.PlaidBankSyncResult
 import com.family.bankapp.plaid.PlaidNameMatcher
@@ -214,6 +218,7 @@ fun BankDetailScreen(
     var transactionBillUi by remember { mutableStateOf<TransactionBillUiState?>(null) }
     var selectedAccountTabIndex by remember { mutableIntStateOf(0) }
     var transactionPageIndex by remember { mutableIntStateOf(0) }
+    var transactionSearchQuery by remember { mutableStateOf("") }
 
     val accountOptions = remember(banks) {
         banks.flatMap { bwa ->
@@ -250,6 +255,20 @@ fun BankDetailScreen(
     }
     LaunchedEffect(selectedAccountTabIndex) {
         transactionPageIndex = 0
+    }
+    LaunchedEffect(transactionSearchQuery) {
+        transactionPageIndex = 0
+    }
+    val isSearchingTransactions = transactionSearchQuery.isNotBlank()
+    val accountNameByPlaidId = remember(item?.accounts) {
+        item?.accounts.orEmpty().mapNotNull { account ->
+            account.plaidAccountId?.let { plaidId -> plaidId to account.name }
+        }.toMap()
+    }
+    val searchedTransactions = remember(plaidTransactions, transactionSearchQuery) {
+        sortPlaidTransactions(
+            PlaidTransactionSearch.filter(plaidTransactions, transactionSearchQuery)
+        )
     }
     val selectedAccountTab = accountTabs.getOrNull(selectedAccountTabIndex)
     val isPlaidConnected = !item?.bank?.plaidItemId.isNullOrBlank()
@@ -541,7 +560,7 @@ fun BankDetailScreen(
                     )
                 }
             } else if (accountTabs.isNotEmpty()) {
-                if (accountTabs.size > 1) {
+                if (accountTabs.size > 1 && !isSearchingTransactions) {
                     item {
                         PrimaryScrollableTabRow(
                             selectedTabIndex = selectedAccountTabIndex,
@@ -568,7 +587,48 @@ fun BankDetailScreen(
                     }
                 }
 
-                selectedAccountTab?.let { tab ->
+                if (isPlaidConnected || plaidTransactions.isNotEmpty()) {
+                    item {
+                        TransactionSearchField(
+                            query = transactionSearchQuery,
+                            onQueryChange = { transactionSearchQuery = it }
+                        )
+                    }
+                }
+
+                if (isSearchingTransactions) {
+                    if (isPlaidConnected || plaidTransactions.isNotEmpty()) {
+                        item {
+                            Text(
+                                if (searchedTransactions.isEmpty()) {
+                                    "No transactions match \"${transactionSearchQuery.trim()}\""
+                                } else {
+                                    "${searchedTransactions.size} transaction(s) matching \"${transactionSearchQuery.trim()}\""
+                                },
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (searchedTransactions.isNotEmpty()) {
+                            TransactionResultsList(
+                                transactions = searchedTransactions,
+                                pageIndex = transactionPageIndex,
+                                onPageIndexChange = { transactionPageIndex = it },
+                                accountNameByPlaidId = accountNameByPlaidId,
+                                linkByTransactionId = linkByTransactionId,
+                                billNameById = billNameById,
+                                onBillAction = { tx ->
+                                    val link = linkByTransactionId[tx.plaidTransactionId]
+                                    transactionBillUi = TransactionBillUiState.ChooseAction(
+                                        tx = tx,
+                                        linkedBillName = link?.billId?.let { billNameById[it] }
+                                    )
+                                }
+                            )
+                        }
+                    }
+                } else selectedAccountTab?.let { tab ->
                     tab.account?.let { account ->
                         item {
                             BankAccountSummaryCard(
@@ -610,52 +670,20 @@ fun BankDetailScreen(
                                 )
                             }
                         } else {
-                            val totalPages = tabPageCount(tab.transactions.size)
-                            val safePage = transactionPageIndex.coerceIn(0, totalPages - 1)
-                            val pageTransactions = tabTransactionsForPage(tab.transactions, safePage)
-
-                            if (totalPages > 1) {
-                                item {
-                                    TransactionPageControls(
-                                        pageIndex = safePage,
-                                        totalPages = totalPages,
-                                        totalCount = tab.transactions.size,
-                                        onPrevious = { transactionPageIndex = safePage - 1 },
-                                        onNext = { transactionPageIndex = safePage + 1 }
+                            TransactionResultsList(
+                                transactions = tab.transactions,
+                                pageIndex = transactionPageIndex,
+                                onPageIndexChange = { transactionPageIndex = it },
+                                linkByTransactionId = linkByTransactionId,
+                                billNameById = billNameById,
+                                onBillAction = { tx ->
+                                    val link = linkByTransactionId[tx.plaidTransactionId]
+                                    transactionBillUi = TransactionBillUiState.ChooseAction(
+                                        tx = tx,
+                                        linkedBillName = link?.billId?.let { billNameById[it] }
                                     )
                                 }
-                            }
-
-                            items(pageTransactions, key = { it.plaidTransactionId }) { tx ->
-                                val link = linkByTransactionId[tx.plaidTransactionId]
-                                PlaidTransactionRow(
-                                    tx = tx,
-                                    isBillLinked = link != null,
-                                    linkedBillName = link?.billId?.let { billNameById[it] },
-                                    onBillAction = if (tx.canAddAsBill()) {
-                                        {
-                                            transactionBillUi = TransactionBillUiState.ChooseAction(
-                                                tx = tx,
-                                                linkedBillName = link?.billId?.let { billNameById[it] }
-                                            )
-                                        }
-                                    } else {
-                                        null
-                                    }
-                                )
-                            }
-
-                            if (totalPages > 1) {
-                                item {
-                                    TransactionPageControls(
-                                        pageIndex = safePage,
-                                        totalPages = totalPages,
-                                        totalCount = tab.transactions.size,
-                                        onPrevious = { transactionPageIndex = safePage - 1 },
-                                        onNext = { transactionPageIndex = safePage + 1 }
-                                    )
-                                }
-                            }
+                            )
                         }
                     }
                 }
@@ -1179,6 +1207,89 @@ private fun buildAccountTransactionTabs(
 }
 
 @Composable
+private fun TransactionSearchField(
+    query: String,
+    onQueryChange: (String) -> Unit
+) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        singleLine = true,
+        label = { Text("Search transactions") },
+        placeholder = { Text("Name or merchant") },
+        leadingIcon = {
+            Icon(Icons.Default.Search, contentDescription = null)
+        },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(Icons.Default.Clear, contentDescription = "Clear search")
+                }
+            }
+        },
+        supportingText = {
+            Text("Searches cached transactions on this phone — no new bank fetch.")
+        }
+    )
+}
+
+private fun LazyListScope.TransactionResultsList(
+    transactions: List<PlaidTransactionEntity>,
+    pageIndex: Int,
+    onPageIndexChange: (Int) -> Unit,
+    linkByTransactionId: Map<String, com.family.bankapp.data.entity.PlaidPaymentLinkEntity>,
+    billNameById: Map<Long, String>,
+    onBillAction: (PlaidTransactionEntity) -> Unit,
+    accountNameByPlaidId: Map<String, String> = emptyMap()
+) {
+    val totalPages = tabPageCount(transactions.size)
+    val safePage = pageIndex.coerceIn(0, totalPages - 1)
+    val pageTransactions = tabTransactionsForPage(transactions, safePage)
+
+    if (totalPages > 1) {
+        item {
+            TransactionPageControls(
+                pageIndex = safePage,
+                totalPages = totalPages,
+                totalCount = transactions.size,
+                onPrevious = { onPageIndexChange(safePage - 1) },
+                onNext = { onPageIndexChange(safePage + 1) }
+            )
+        }
+    }
+
+    items(pageTransactions, key = { it.plaidTransactionId }) { tx ->
+        val link = linkByTransactionId[tx.plaidTransactionId]
+        PlaidTransactionRow(
+            tx = tx,
+            accountLabel = accountNameByPlaidId[tx.plaidAccountId],
+            isBillLinked = link != null,
+            linkedBillName = link?.billId?.let { billNameById[it] },
+            onBillAction = if (tx.canAddAsBill()) {
+                { onBillAction(tx) }
+            } else {
+                null
+            }
+        )
+    }
+
+    if (totalPages > 1) {
+        item {
+            TransactionPageControls(
+                pageIndex = safePage,
+                totalPages = totalPages,
+                totalCount = transactions.size,
+                onPrevious = { onPageIndexChange(safePage - 1) },
+                onNext = { onPageIndexChange(safePage + 1) }
+            )
+        }
+    }
+}
+
+@Composable
 private fun TransactionPageControls(
     pageIndex: Int,
     totalPages: Int,
@@ -1220,6 +1331,7 @@ private fun TransactionPageControls(
 @Composable
 private fun PlaidTransactionRow(
     tx: PlaidTransactionEntity,
+    accountLabel: String? = null,
     isBillLinked: Boolean = false,
     linkedBillName: String? = null,
     onBillAction: (() -> Unit)? = null
@@ -1242,7 +1354,11 @@ private fun PlaidTransactionRow(
             Column(Modifier.weight(1f).padding(start = 8.dp)) {
                 Text(tx.name, fontWeight = FontWeight.SemiBold)
                 Text(
-                    tx.date + if (tx.pending) " · pending" else "",
+                    buildString {
+                        append(tx.date)
+                        if (tx.pending) append(" · pending")
+                        accountLabel?.let { append(" · $it") }
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
