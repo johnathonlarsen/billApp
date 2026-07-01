@@ -158,7 +158,7 @@ object MonthTimeline {
             paidCount = paidCount,
             totalCount = totalCount,
             totalDueCents = entries.sumOf { it.bill.amountCents },
-            totalPaidCents = entries.filter { it.isPaid }.sumOf { it.bill.amountCents }
+            totalPaidCents = entries.filter { it.isPaid }.sumOf { it.payment!!.amountCents }
         )
     }
 

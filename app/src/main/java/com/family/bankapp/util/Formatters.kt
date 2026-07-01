@@ -140,6 +140,10 @@ object BillSchedule {
         return payments.filter { it.billId == billId }.find { it.cycleDueDateMillis == cycleMillis }
     }
 
+    /** Actual amount for a cycle — payment record if paid, otherwise the bill template. */
+    fun amountForCycle(bill: BillEntity, payment: PaymentRecordEntity?): Long =
+        payment?.amountCents ?: bill.amountCents
+
     fun isCycleSkipped(
         skips: List<com.family.bankapp.data.entity.BillCycleSkipEntity>,
         billId: Long,

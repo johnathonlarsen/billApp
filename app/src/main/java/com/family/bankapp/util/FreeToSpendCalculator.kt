@@ -137,11 +137,13 @@ object FreeToSpendCalculator {
             if (!MonthTimeline.billAppliesToMonth(bill, yearMonth)) return@forEach
             val dueDate = BillSchedule.dueDateForYearMonth(bill, yearMonth)
             if (BillSchedule.isCycleSkipped(skips, bill.id, dueDate)) return@forEach
-            val paid = BillSchedule.paymentForCycle(payments, bill.id, dueDate) != null
+            val payment = BillSchedule.paymentForCycle(payments, bill.id, dueDate)
+            val paid = payment != null
+            val cycleAmount = BillSchedule.amountForCycle(bill, payment)
             if (bill.category == BillCategory.OTHER) {
-                if (paid) miscPaid += bill.amountCents else miscUnpaid += bill.amountCents
+                if (paid) miscPaid += cycleAmount else miscUnpaid += bill.amountCents
             } else {
-                fixedDue += bill.amountCents
+                fixedDue += cycleAmount
             }
         }
 

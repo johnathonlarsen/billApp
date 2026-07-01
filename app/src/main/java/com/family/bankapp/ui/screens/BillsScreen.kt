@@ -28,9 +28,11 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -229,8 +231,8 @@ fun BillsScreen(
                 payTarget = null
                 payCycleDate = null
             },
-            onConfirm = { cycleDueDate ->
-                vm.markPaid(target.dueInfo.bill, target.dueInfo.bill.linkedAccountId, cycleDueDate)
+            onConfirm = { cycleDueDate, amountCents ->
+                vm.markPaid(target.dueInfo.bill, target.dueInfo.bill.linkedAccountId, cycleDueDate, amountCents)
                 payTarget = null
                 payCycleDate = null
             }
@@ -374,7 +376,20 @@ private fun BillCard(
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                     }
                 }
-                MoneyText(dueInfo.bill.amountCents, color = statusColor)
+                MoneyText(
+                    BillSchedule.amountForCycle(dueInfo.bill, dueInfo.cyclePayment),
+                    color = statusColor
+                )
+            }
+            if (dueInfo.isPaidThisCycle &&
+                dueInfo.cyclePayment != null &&
+                dueInfo.cyclePayment.amountCents > dueInfo.bill.amountCents
+            ) {
+                Text(
+                    "Usual ${MoneyFormatter.format(dueInfo.bill.amountCents)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             Text(statusText, color = statusColor, style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -400,7 +415,7 @@ private fun MarkPaidDialog(
     item: BillListItem,
     initialYearMonth: YearMonth? = null,
     onDismiss: () -> Unit,
-    onConfirm: (LocalDate) -> Unit
+    onConfirm: (LocalDate, Long) -> Unit
 ) {
     val bill = item.dueInfo.bill
     val defaultYearMonth = initialYearMonth ?: BillSchedule.defaultPaymentYearMonth(bill)
@@ -408,16 +423,37 @@ private fun MarkPaidDialog(
     var selectedYear by remember(initialYearMonth) { mutableIntStateOf(defaultYearMonth.year) }
     var monthExpanded by remember { mutableStateOf(false) }
     var yearExpanded by remember { mutableStateOf(false) }
+    var amountText by remember { mutableStateOf(MoneyFormatter.format(bill.amountCents)) }
+    var amountError by remember { mutableStateOf<String?>(null) }
 
     val yearMonth = YearMonth.of(selectedYear, selectedMonth)
     val cycleDueDate = BillSchedule.dueDateForYearMonth(bill, yearMonth)
     val cycleLabel = BillSchedule.formatCycleLabel(bill, cycleDueDate)
     val existingPayment = BillSchedule.paymentForCycle(item.billPayments, bill.id, cycleDueDate)
 
+    LaunchedEffect(cycleDueDate, existingPayment?.amountCents) {
+        amountText = MoneyFormatter.format(existingPayment?.amountCents ?: bill.amountCents)
+        amountError = null
+    }
+
     val monthLabel = Month.of(selectedMonth).getDisplayName(TextStyle.FULL, Locale.getDefault())
     val yearOptions = remember {
         val current = LocalDate.now().year
         (current - 2..current + 1).toList()
+    }
+
+    fun submitPayment() {
+        val parsed = MoneyFormatter.parse(amountText)
+        when {
+            parsed == null -> amountError = "Enter a valid amount"
+            parsed < bill.amountCents -> {
+                amountError = "Must be at least ${MoneyFormatter.format(bill.amountCents)}"
+            }
+            else -> {
+                amountError = null
+                onConfirm(cycleDueDate, parsed)
+            }
+        }
     }
 
     AlertDialog(
@@ -472,7 +508,7 @@ private fun MarkPaidDialog(
                         Text("Billing period", style = MaterialTheme.typography.labelMedium)
                         Text(cycleLabel, fontWeight = FontWeight.Bold)
                         Text(
-                            "Amount: ${MoneyFormatter.format(bill.amountCents)}",
+                            "Usual amount: ${MoneyFormatter.format(bill.amountCents)}",
                             style = MaterialTheme.typography.bodySmall
                         )
                         bill.linkedAccountId?.let {
@@ -485,6 +521,28 @@ private fun MarkPaidDialog(
                     }
                 }
 
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = {
+                        amountText = it
+                        amountError = null
+                    },
+                    label = { Text("Amount paid") },
+                    supportingText = {
+                        Text(
+                            amountError ?: "Can be higher than usual if this month cost more — not less.",
+                            color = if (amountError != null) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
+                    },
+                    isError = amountError != null,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 if (existingPayment != null) {
                     Text(
                         "This period is already marked paid. Confirming will replace that payment.",
@@ -495,7 +553,7 @@ private fun MarkPaidDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(cycleDueDate) }) {
+            Button(onClick = { submitPayment() }) {
                 Text("Confirm paid")
             }
         },
@@ -522,7 +580,8 @@ private fun UndoPaidDialog(
         title = { Text("Undo payment?") },
         text = {
             Text(
-                "Remove the paid status for ${bill.name} ($cycleLabel)?"
+                "Remove the paid status for ${bill.name} ($cycleLabel)? " +
+                    "Paid ${MoneyFormatter.format(payment.amountCents)}."
             )
         },
         confirmButton = {

@@ -100,9 +100,9 @@ class BillsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun markPaid(bill: BillEntity, accountId: Long?, cycleDueDate: LocalDate) {
+    fun markPaid(bill: BillEntity, accountId: Long?, cycleDueDate: LocalDate, amountCents: Long) {
         viewModelScope.launch {
-            repository.markBillPaid(bill, accountId, cycleDueDate)
+            repository.markBillPaid(bill, accountId, cycleDueDate, amountCents = amountCents)
         }
     }
 

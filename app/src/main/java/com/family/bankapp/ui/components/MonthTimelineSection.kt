@@ -216,10 +216,21 @@ private fun MonthDetailCard(
                                 }
                             }
                             Column(horizontalAlignment = Alignment.End) {
+                                val paidAmount = entry.payment?.amountCents ?: entry.bill.amountCents
                                 Text(
-                                    MoneyFormatter.format(entry.bill.amountCents),
+                                    MoneyFormatter.format(paidAmount),
                                     fontWeight = FontWeight.SemiBold
                                 )
+                                if (entry.isPaid &&
+                                    entry.payment != null &&
+                                    entry.payment.amountCents > entry.bill.amountCents
+                                ) {
+                                    Text(
+                                        "Usual ${MoneyFormatter.format(entry.bill.amountCents)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
