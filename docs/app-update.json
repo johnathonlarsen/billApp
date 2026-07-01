@@ -1,8 +1,8 @@
 {
-  "versionCode": 44,
-  "versionName": "1.7.6",
+  "versionCode": 45,
+  "versionName": "1.7.7",
   "apkUrl": "https://raw.githubusercontent.com/johnathonlarsen/billApp/main/docs/FamilyBank.apk",
-  "apkSizeBytes": 16351481,
-  "releasedAt": "2026-07-01T14:54:03.790163349Z",
+  "apkSizeBytes": 16367865,
+  "releasedAt": "2026-07-01T15:03:43.851485608Z",
   "notes": "Family Bank update. If install fails with a package conflict, uninstall the old app once, then install again. Future updates will install in place."
 }

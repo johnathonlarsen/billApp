@@ -39,9 +39,7 @@ object FreeToSpendDebugReport {
         appendLine("=== Result ===")
         appendLine("freeToSpendCents: ${snapshot.freeToSpendCents}")
         appendLine("monthlyIncomeCents: ${snapshot.monthlyIncomeCents}")
-        appendLine("fixedBillsThisMonthCents: ${snapshot.fixedBillsThisMonthCents}")
-        appendLine("miscPaidThisMonthCents: ${snapshot.miscPaidThisMonthCents}")
-        appendLine("miscUnpaidThisMonthCents: ${snapshot.miscUnpaidThisMonthCents}")
+        appendLine("allBillsThisMonthCents: ${snapshot.allBillsThisMonthCents}")
         appendLine("plaidMiscSpentCents: ${snapshot.plaidMiscSpentCents}")
         appendLine("priorOverdueUnpaidCents: ${snapshot.priorOverdueUnpaidCents}")
         appendLine("includePriorOverdue: ${snapshot.includePriorOverdue}")
@@ -108,15 +106,13 @@ object FreeToSpendDebugReport {
 
     private fun StringBuilder.appendFormulaBreakdown(snapshot: FreeToSpendSnapshot) {
         appendLine("Income:              ${MoneyFormatter.format(snapshot.monthlyIncomeCents)}")
-        appendLine("  - bills:           ${MoneyFormatter.format(snapshot.fixedBillsThisMonthCents)}")
-        appendLine("  - misc (paid):     ${MoneyFormatter.format(snapshot.miscPaidThisMonthCents)}")
+        appendLine("  - bills:           ${MoneyFormatter.format(snapshot.allBillsThisMonthCents)}")
         appendLine("  - spending (Plaid): ${MoneyFormatter.format(snapshot.plaidMiscSpentCents)}")
         appendLine("  - prior overdue:   ${MoneyFormatter.format(snapshot.priorOverdueUnpaidCents)}")
         appendLine("= ${MoneyFormatter.format(snapshot.freeToSpendCents)} free to spend")
         appendLine(
             "Compact: Income ${MoneyFormatter.format(snapshot.monthlyIncomeCents)}" +
-                " - bills ${MoneyFormatter.format(snapshot.fixedBillsThisMonthCents)}" +
-                " - misc ${MoneyFormatter.format(snapshot.miscPaidThisMonthCents)}" +
+                " - bills ${MoneyFormatter.format(snapshot.allBillsThisMonthCents)}" +
                 " - spending ${MoneyFormatter.format(snapshot.plaidMiscSpentCents)}" +
                 " - prior ${MoneyFormatter.format(snapshot.priorOverdueUnpaidCents)}"
         )
@@ -137,11 +133,7 @@ object FreeToSpendDebugReport {
             val payment = BillSchedule.paymentForCycle(payments, bill.id, dueDate)
             val paid = payment != null
             val cycleAmount = BillSchedule.amountForCycle(bill, payment)
-            val countsToward = when {
-                bill.category == BillCategory.OTHER && paid -> "misc paid (counts)"
-                bill.category == BillCategory.OTHER -> "misc unpaid (reference only)"
-                else -> "fixed due (counts)"
-            }
+            val countsToward = "counts toward free to spend"
             any = true
             appendLine(
                 "- ${bill.name} | ${bill.category.label} | due ${dueDate.format(dateFormatter)} | " +

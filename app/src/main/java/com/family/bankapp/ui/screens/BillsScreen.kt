@@ -57,9 +57,11 @@ import com.family.bankapp.util.BillCsvImportResult
 import com.family.bankapp.util.BillSchedule
 import com.family.bankapp.util.MonthBillEntry
 import com.family.bankapp.util.MoneyFormatter
+import java.time.Instant
 import java.time.LocalDate
 import java.time.Month
 import java.time.YearMonth
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
@@ -73,9 +75,11 @@ fun BillsScreen(
     val vm: BillsViewModel = viewModel()
     val bills by vm.bills.collectAsState()
     val monthTimeline by vm.monthTimeline.collectAsState()
+    val accountOptions by vm.accountOptions.collectAsState()
     var expandedMonth by remember { mutableStateOf<YearMonth?>(YearMonth.now()) }
     var payTarget by remember { mutableStateOf<BillListItem?>(null) }
     var payCycleDate by remember { mutableStateOf<LocalDate?>(null) }
+    var editPaymentTarget by remember { mutableStateOf<MonthBillEntry?>(null) }
     var undoTarget by remember { mutableStateOf<BillListItem?>(null) }
     var skipTarget by remember { mutableStateOf<MonthBillEntry?>(null) }
     var importResult by remember { mutableStateOf<BillCsvImportResult?>(null) }
@@ -177,6 +181,11 @@ fun BillsScreen(
                             payCycleDate = entry.dueDate
                         }
                     },
+                    onEditBillPayment = { entry ->
+                        if (entry.payment != null) {
+                            editPaymentTarget = entry
+                        }
+                    },
                     onRemoveBillFromMonth = { skipTarget = it }
                 )
             }
@@ -237,6 +246,21 @@ fun BillsScreen(
                 payCycleDate = null
             }
         )
+    }
+
+    editPaymentTarget?.let { entry ->
+        val payment = entry.payment
+        if (payment != null) {
+            EditPaymentDialog(
+                entry = entry,
+                accountOptions = accountOptions,
+                onDismiss = { editPaymentTarget = null },
+                onConfirm = { accountId, amountCents, paidAtMillis ->
+                    vm.updatePayment(payment.id, accountId, amountCents, paidAtMillis)
+                    editPaymentTarget = null
+                }
+            )
+        }
     }
 
     undoTarget?.let { target ->
@@ -555,6 +579,150 @@ private fun MarkPaidDialog(
         confirmButton = {
             Button(onClick = { submitPayment() }) {
                 Text("Confirm paid")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+private fun EditPaymentDialog(
+    entry: MonthBillEntry,
+    accountOptions: List<Pair<String, Long>>,
+    onDismiss: () -> Unit,
+    onConfirm: (accountId: Long?, amountCents: Long, paidAtMillis: Long) -> Unit
+) {
+    val bill = entry.bill
+    val payment = entry.payment ?: return
+    val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+    val cycleLabel = BillSchedule.formatCycleLabel(bill, entry.dueDate)
+    var amountText by remember(payment.id) { mutableStateOf(MoneyFormatter.format(payment.amountCents)) }
+    var amountError by remember { mutableStateOf<String?>(null) }
+    var paidDateText by remember(payment.id) {
+        mutableStateOf(
+            Instant.ofEpochMilli(payment.paidAt)
+                .atZone(ZoneId.systemDefault())
+                .toLocalDate()
+                .format(dateFormatter)
+        )
+    }
+    var paidDateError by remember { mutableStateOf<String?>(null) }
+    var selectedAccountId by remember(payment.id) { mutableStateOf(payment.accountId) }
+    var accountExpanded by remember { mutableStateOf(false) }
+    val accountLabel = selectedAccountId?.let { id ->
+        accountOptions.find { it.second == id }?.first
+    } ?: "None"
+
+    fun submitEdit() {
+        val parsedAmount = MoneyFormatter.parse(amountText)
+        val parsedDate = runCatching { LocalDate.parse(paidDateText.trim(), dateFormatter) }.getOrNull()
+        when {
+            parsedAmount == null -> {
+                amountError = "Enter a valid amount"
+                paidDateError = null
+            }
+            parsedAmount < bill.amountCents -> {
+                amountError = "Must be at least ${MoneyFormatter.format(bill.amountCents)}"
+                paidDateError = null
+            }
+            parsedDate == null -> {
+                amountError = null
+                paidDateError = "Use yyyy-MM-dd"
+            }
+            else -> {
+                amountError = null
+                paidDateError = null
+                val paidAtMillis = parsedDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                onConfirm(selectedAccountId, parsedAmount, paidAtMillis)
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit ${bill.name} payment") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Update payment details for $cycleLabel.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                OutlinedTextField(
+                    value = paidDateText,
+                    onValueChange = {
+                        paidDateText = it
+                        paidDateError = null
+                    },
+                    label = { Text("Paid date") },
+                    supportingText = {
+                        Text(
+                            paidDateError ?: "Format: yyyy-MM-dd",
+                            color = if (paidDateError != null) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
+                    },
+                    isError = paidDateError != null,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = {
+                        amountText = it
+                        amountError = null
+                    },
+                    label = { Text("Amount paid") },
+                    supportingText = {
+                        Text(
+                            amountError ?: "Usual amount: ${MoneyFormatter.format(bill.amountCents)}",
+                            color = if (amountError != null) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
+                    },
+                    isError = amountError != null,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                EnumDropdownField(
+                    label = "Paid from account",
+                    value = accountLabel,
+                    expanded = accountExpanded,
+                    onExpandedChange = { accountExpanded = it },
+                    enabled = accountOptions.isNotEmpty()
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("None") },
+                        onClick = {
+                            selectedAccountId = null
+                            accountExpanded = false
+                        }
+                    )
+                    accountOptions.forEach { (label, id) ->
+                        DropdownMenuItem(
+                            text = { Text(label) },
+                            onClick = {
+                                selectedAccountId = id
+                                accountExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { submitEdit() }) {
+                Text("Save")
             }
         },
         dismissButton = {

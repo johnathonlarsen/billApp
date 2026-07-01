@@ -515,6 +515,25 @@ class BankRepository(
         billDao.update(bill.copy(lastPaidAt = latest?.paidAt))
     }
 
+    suspend fun updateBillPayment(
+        paymentId: Long,
+        accountId: Long?,
+        amountCents: Long,
+        paidAtMillis: Long
+    ) {
+        val existing = paymentRecordDao.getById(paymentId) ?: return
+        paymentRecordDao.update(
+            existing.copy(
+                accountId = accountId,
+                amountCents = amountCents,
+                paidAt = paidAtMillis
+            )
+        )
+        val bill = billDao.getById(existing.billId) ?: return
+        val latest = paymentRecordDao.getLatestForBill(bill.id)
+        billDao.update(bill.copy(lastPaidAt = latest?.paidAt))
+    }
+
     private suspend fun undoPaymentRecord(record: PaymentRecordEntity) {
         paymentRecordDao.delete(record)
     }

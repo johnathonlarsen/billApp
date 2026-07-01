@@ -66,6 +66,17 @@ class BillsViewModel(application: Application) : AndroidViewModel(application) {
         MonthTimeline.build(bills, payments, skips)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val accountOptions = combine(
+        repository.observeBanks(),
+        repository.observeAccounts()
+    ) { banks, accounts ->
+        banks.flatMap { bank ->
+            accounts.filter { it.bankId == bank.id }.map { acc ->
+                "${bank.name} · ${acc.name}" to acc.id
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     fun billListItemFor(billId: Long, billItems: List<BillListItem>): BillListItem? =
         billItems.find { it.dueInfo.bill.id == billId }
 
@@ -103,6 +114,17 @@ class BillsViewModel(application: Application) : AndroidViewModel(application) {
     fun markPaid(bill: BillEntity, accountId: Long?, cycleDueDate: LocalDate, amountCents: Long) {
         viewModelScope.launch {
             repository.markBillPaid(bill, accountId, cycleDueDate, amountCents = amountCents)
+        }
+    }
+
+    fun updatePayment(
+        paymentId: Long,
+        accountId: Long?,
+        amountCents: Long,
+        paidAtMillis: Long
+    ) {
+        viewModelScope.launch {
+            repository.updateBillPayment(paymentId, accountId, amountCents, paidAtMillis)
         }
     }
 

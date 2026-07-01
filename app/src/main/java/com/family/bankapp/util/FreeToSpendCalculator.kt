@@ -27,12 +27,8 @@ object RecurrenceNormalizer {
 
 data class FreeToSpendSnapshot(
     val monthlyIncomeCents: Long,
-    /** Fixed bills (non-Other) due this month — reserved from income whether paid yet or not. */
-    val fixedBillsThisMonthCents: Long,
-    /** Other-category bills marked paid this month (misc that has already come out). */
-    val miscPaidThisMonthCents: Long,
-    /** Other-category bills still unpaid this month (shown for reference only). */
-    val miscUnpaidThisMonthCents: Long,
+    /** Total of all bills due this month — reserved from income whether paid yet or not. */
+    val allBillsThisMonthCents: Long,
     /** Plaid debits this month not linked to a bill payment. */
     val plaidMiscSpentCents: Long,
     val priorOverdueUnpaidCents: Long,
@@ -63,7 +59,7 @@ object FreeToSpendCalculator {
         val liquidBalance = freeToSpendBalance(accounts)
 
         val currentMonth = YearMonth.from(today)
-        val breakdown = currentMonthBillBreakdown(bills, payments, skips, currentMonth, today)
+        val allBillsThisMonth = allBillsDueThisMonthCents(bills, payments, skips, currentMonth)
         val plaidMisc = miscPlaidSpentThisMonth(
             transactions = plaidTransactions,
             linkedTransactionIds = linkedPlaidTransactionIds,
@@ -77,16 +73,13 @@ object FreeToSpendCalculator {
         }
 
         val freeToSpend = monthlyIncome -
-            breakdown.fixedBillsDueCents -
-            breakdown.miscPaidCents -
+            allBillsThisMonth -
             plaidMisc -
             priorOverdue
 
         return FreeToSpendSnapshot(
             monthlyIncomeCents = monthlyIncome,
-            fixedBillsThisMonthCents = breakdown.fixedBillsDueCents,
-            miscPaidThisMonthCents = breakdown.miscPaidCents,
-            miscUnpaidThisMonthCents = breakdown.miscUnpaidCents,
+            allBillsThisMonthCents = allBillsThisMonth,
             plaidMiscSpentCents = plaidMisc,
             priorOverdueUnpaidCents = priorOverdue,
             freeToSpendCents = freeToSpend,
@@ -115,43 +108,22 @@ object FreeToSpendCalculator {
                 .toLocalDate()
         )
 
-    private data class CurrentMonthBillBreakdown(
-        val fixedBillsDueCents: Long,
-        val miscPaidCents: Long,
-        val miscUnpaidCents: Long
-    )
-
-    private fun currentMonthBillBreakdown(
+    private fun allBillsDueThisMonthCents(
         bills: List<BillEntity>,
         payments: List<PaymentRecordEntity>,
         skips: List<BillCycleSkipEntity>,
-        yearMonth: YearMonth,
-        today: LocalDate
-    ): CurrentMonthBillBreakdown {
-        var fixedDue = 0L
-        var miscPaid = 0L
-        var miscUnpaid = 0L
-
+        yearMonth: YearMonth
+    ): Long {
+        var total = 0L
         bills.forEach { bill ->
             if (!billTracksMonth(bill, yearMonth)) return@forEach
             if (!MonthTimeline.billAppliesToMonth(bill, yearMonth)) return@forEach
             val dueDate = BillSchedule.dueDateForYearMonth(bill, yearMonth)
             if (BillSchedule.isCycleSkipped(skips, bill.id, dueDate)) return@forEach
             val payment = BillSchedule.paymentForCycle(payments, bill.id, dueDate)
-            val paid = payment != null
-            val cycleAmount = BillSchedule.amountForCycle(bill, payment)
-            if (bill.category == BillCategory.OTHER) {
-                if (paid) miscPaid += cycleAmount else miscUnpaid += bill.amountCents
-            } else {
-                fixedDue += cycleAmount
-            }
+            total += BillSchedule.amountForCycle(bill, payment)
         }
-
-        return CurrentMonthBillBreakdown(
-            fixedBillsDueCents = fixedDue,
-            miscPaidCents = miscPaid,
-            miscUnpaidCents = miscUnpaid
-        )
+        return total
     }
 
     private fun miscPlaidSpentThisMonth(

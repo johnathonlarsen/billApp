@@ -276,7 +276,7 @@ private fun FreeToSpendCard(
                 if (isShort) {
                     "${MoneyFormatter.format(-fts.freeToSpendCents)} over your ${fts.currentMonthLabel} budget"
                 } else {
-                    "Left from ${fts.currentMonthLabel} income after bills & misc spent"
+                    "Left from ${fts.currentMonthLabel} income after this month's bills & spending"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -284,10 +284,7 @@ private fun FreeToSpendCard(
             Text(
                 buildString {
                     append("Income ${MoneyFormatter.format(fts.monthlyIncomeCents)}")
-                    append(" − bills ${MoneyFormatter.format(fts.fixedBillsThisMonthCents)}")
-                    if (fts.miscPaidThisMonthCents > 0) {
-                        append(" − misc ${MoneyFormatter.format(fts.miscPaidThisMonthCents)}")
-                    }
+                    append(" − bills ${MoneyFormatter.format(fts.allBillsThisMonthCents)}")
                     if (fts.plaidMiscSpentCents > 0) {
                         append(" − spending ${MoneyFormatter.format(fts.plaidMiscSpentCents)}")
                     }
@@ -297,14 +294,6 @@ private fun FreeToSpendCard(
                 },
                 style = MaterialTheme.typography.bodySmall
             )
-            if (fts.miscUnpaidThisMonthCents > 0) {
-                Text(
-                    "Other bills not paid yet (${MoneyFormatter.format(fts.miscUnpaidThisMonthCents)}) " +
-                        "don't reduce this until marked paid.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
             if (fts.plaidMiscSpentCents > 0) {
                 Text(
                     "Spending = Plaid debits this month not linked to a bill.",
