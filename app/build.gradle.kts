@@ -16,8 +16,8 @@ android {
         applicationId = "com.family.bankapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 46
-        versionName = "1.7.8"
+        versionCode = 47
+        versionName = "1.7.9"
     }
 
     signingConfigs {
