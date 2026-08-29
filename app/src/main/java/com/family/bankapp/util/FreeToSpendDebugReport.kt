@@ -199,12 +199,20 @@ object FreeToSpendDebugReport {
             account.plaidAccountId?.let { it to account.name }
         }.toMap()
 
+        val merchantNets = PlaidMiscSpending.merchantNets(
+            transactions = transactions,
+            linkedTransactionIds = linkedTransactionIds,
+            spendingPlaidAccountIds = spendingPlaidAccountIds,
+            yearMonth = yearMonth
+        )
+
         val misc = transactions.filter { tx ->
             tx.plaidAccountId in spendingPlaidAccountIds &&
                 tx.amountCents > 0 &&
                 !tx.pending &&
                 !tx.excludeFromFreeToSpend &&
                 tx.plaidTransactionId !in linkedTransactionIds &&
+                !PlaidMiscSpending.isInternalTransfer(PlaidMiscSpending.merchantKey(tx)) &&
                 runCatching { YearMonth.from(LocalDate.parse(tx.date)) }.getOrNull() == yearMonth
         }.sortedByDescending { it.date }
 
@@ -217,19 +225,46 @@ object FreeToSpendDebugReport {
                 runCatching { YearMonth.from(LocalDate.parse(tx.date)) }.getOrNull() == yearMonth
         }.sortedByDescending { it.date }
 
-        if (misc.isEmpty() && excluded.isEmpty()) {
+        val rolloverNets = merchantNets.filter { net ->
+            PlaidMiscSpending.isRolloverLenderName(net.label) && net.creditsOffsetCents > 0L
+        }
+
+        if (misc.isEmpty() && excluded.isEmpty() && merchantNets.isEmpty()) {
             appendLine("(none)")
             return
+        }
+
+        if (rolloverNets.isNotEmpty()) {
+            appendLine("Borrow-app netting (repayment − re-borrow deposit, prior + current month):")
+            rolloverNets.forEach { net ->
+                appendLine(
+                    "- ${net.label}: debits ${MoneyFormatter.format(net.debitsThisMonthCents)}" +
+                        " − deposits ${MoneyFormatter.format(net.creditsOffsetCents)}" +
+                        " = ${MoneyFormatter.format(net.countedCents)} counted"
+                )
+            }
+            appendLine()
         }
 
         if (misc.isNotEmpty()) {
             misc.forEach { tx ->
                 val accountName = accountNameByPlaidId[tx.plaidAccountId] ?: tx.plaidAccountId
+                val key = PlaidMiscSpending.merchantKey(tx)
+                val note = when {
+                    PlaidMiscSpending.isInternalTransfer(key) -> " | internal transfer (ignored)"
+                    PlaidMiscSpending.isRolloverLender(key) -> {
+                        val net = merchantNets.find { it.label.equals(tx.name, true) || it.label == (tx.merchantName ?: tx.name) }
+                        if (net != null && net.creditsOffsetCents > 0) " | see netting above" else ""
+                    }
+                    else -> ""
+                }
                 appendLine(
-                    "- ${tx.date} | ${tx.name} | ${MoneyFormatter.format(tx.amountCents)} | account: $accountName"
+                    "- ${tx.date} | ${tx.name} | ${MoneyFormatter.format(tx.amountCents)} | account: $accountName$note"
                 )
             }
-            appendLine("Total misc spending: ${MoneyFormatter.format(misc.sumOf { it.amountCents })}")
+            appendLine(
+                "Total misc spending (net): ${MoneyFormatter.format(merchantNets.sumOf { it.countedCents })}"
+            )
         } else {
             appendLine("(no counted misc spending)")
         }
@@ -245,7 +280,7 @@ object FreeToSpendDebugReport {
             }
             appendLine(
                 "Total excluded: ${MoneyFormatter.format(excluded.sumOf { it.amountCents })} " +
-                    "(loan rollovers, transfers, etc.)"
+                    "(manual: loan rollovers, transfers, etc.)"
             )
         }
     }

@@ -29,7 +29,7 @@ data class FreeToSpendSnapshot(
     val monthlyIncomeCents: Long,
     /** Total of all bills due this month — reserved from income whether paid yet or not. */
     val allBillsThisMonthCents: Long,
-    /** Plaid debits this month not linked to a bill payment. */
+    /** Plaid debits this month not linked to a bill, net of borrow-app re-borrow deposits. */
     val plaidMiscSpentCents: Long,
     val priorOverdueUnpaidCents: Long,
     val freeToSpendCents: Long,
@@ -132,7 +132,18 @@ object FreeToSpendCalculator {
         accounts: List<AccountEntity>,
         yearMonth: YearMonth
     ): Long {
-        val spendingPlaidAccountIds = accounts.mapNotNull { account ->
+        val spendingPlaidAccountIds = spendingPlaidAccountIds(accounts)
+        if (spendingPlaidAccountIds.isEmpty()) return 0L
+        return PlaidMiscSpending.miscSpentCents(
+            transactions = transactions,
+            linkedTransactionIds = linkedTransactionIds,
+            spendingPlaidAccountIds = spendingPlaidAccountIds,
+            yearMonth = yearMonth
+        )
+    }
+
+    private fun spendingPlaidAccountIds(accounts: List<AccountEntity>): Set<String> =
+        accounts.mapNotNull { account ->
             val counts = when (account.accountType) {
                 AccountType.CHECKING -> true
                 AccountType.SAVINGS -> account.includeInFreeToSpend
@@ -140,21 +151,6 @@ object FreeToSpendCalculator {
             }
             if (counts) account.plaidAccountId else null
         }.toSet()
-
-        if (spendingPlaidAccountIds.isEmpty()) return 0L
-
-        return transactions.sumOf { tx ->
-            if (tx.plaidAccountId !in spendingPlaidAccountIds) return@sumOf 0L
-            if (tx.amountCents <= 0) return@sumOf 0L
-            if (tx.pending) return@sumOf 0L
-            if (tx.excludeFromFreeToSpend) return@sumOf 0L
-            if (tx.plaidTransactionId in linkedTransactionIds) return@sumOf 0L
-            val txMonth = runCatching { YearMonth.from(LocalDate.parse(tx.date)) }.getOrNull()
-                ?: return@sumOf 0L
-            if (txMonth != yearMonth) return@sumOf 0L
-            tx.amountCents
-        }
-    }
 
     private fun billTracksMonth(bill: BillEntity, yearMonth: YearMonth): Boolean =
         !yearMonth.isBefore(trackingStartMonth(bill))
