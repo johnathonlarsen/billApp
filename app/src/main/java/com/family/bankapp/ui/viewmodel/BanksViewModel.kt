@@ -349,4 +349,30 @@ class BanksViewModel(application: Application) : AndroidViewModel(application) {
             })
         }
     }
+
+    fun setTransactionExcludeFromFreeToSpend(
+        txId: String,
+        excluded: Boolean,
+        onResult: (Result<Unit>) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            onResult(runCatching {
+                repository.setTransactionExcludeFromFreeToSpend(txId, excluded)
+                Unit
+            })
+        }
+    }
+
+    fun setMatchingDebitsExcludeFromFreeToSpend(
+        bankId: Long,
+        name: String,
+        excluded: Boolean,
+        onResult: (Result<Int>) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            onResult(runCatching {
+                repository.setMatchingDebitsExcludeFromFreeToSpend(bankId, name, excluded)
+            })
+        }
+    }
 }

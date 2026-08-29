@@ -147,6 +147,7 @@ object FreeToSpendCalculator {
             if (tx.plaidAccountId !in spendingPlaidAccountIds) return@sumOf 0L
             if (tx.amountCents <= 0) return@sumOf 0L
             if (tx.pending) return@sumOf 0L
+            if (tx.excludeFromFreeToSpend) return@sumOf 0L
             if (tx.plaidTransactionId in linkedTransactionIds) return@sumOf 0L
             val txMonth = runCatching { YearMonth.from(LocalDate.parse(tx.date)) }.getOrNull()
                 ?: return@sumOf 0L

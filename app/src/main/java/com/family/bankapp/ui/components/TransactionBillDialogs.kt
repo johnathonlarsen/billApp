@@ -31,7 +31,11 @@ enum class TransactionBillAction {
     NEW_BILL,
     LINK_EXISTING,
     UPDATE_EXISTING,
-    UNLINK
+    UNLINK,
+    EXCLUDE_FROM_FREE_TO_SPEND,
+    EXCLUDE_ALL_MATCHING_FROM_FREE_TO_SPEND,
+    INCLUDE_IN_FREE_TO_SPEND,
+    INCLUDE_ALL_MATCHING_IN_FREE_TO_SPEND
 }
 
 @Composable
@@ -45,7 +49,7 @@ fun TransactionBillActionDialog(
     val isLinked = !linkedBillName.isNullOrBlank()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (isLinked) "Linked transaction" else "Bill from transaction") },
+        title = { Text(if (isLinked) "Linked transaction" else "Transaction options") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(label, fontWeight = FontWeight.SemiBold)
@@ -104,6 +108,51 @@ fun TransactionBillActionDialog(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Update existing bill from this")
+                    }
+                }
+                if (transaction.amountCents > 0) {
+                    Text(
+                        "Free to spend",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Text(
+                        if (transaction.excludeFromFreeToSpend) {
+                            "This debit is excluded from Home free-to-spend misc spending " +
+                                "(e.g. loan repay-and-reborrow)."
+                        } else {
+                            "Misc Plaid debits reduce free to spend. Exclude loan rollovers that net to zero."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (transaction.excludeFromFreeToSpend) {
+                        TextButton(
+                            onClick = { onSelect(TransactionBillAction.INCLUDE_IN_FREE_TO_SPEND) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Include in free to spend")
+                        }
+                        TextButton(
+                            onClick = { onSelect(TransactionBillAction.INCLUDE_ALL_MATCHING_IN_FREE_TO_SPEND) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Include all matching debits")
+                        }
+                    } else {
+                        TextButton(
+                            onClick = { onSelect(TransactionBillAction.EXCLUDE_FROM_FREE_TO_SPEND) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Exclude from free to spend")
+                        }
+                        TextButton(
+                            onClick = { onSelect(TransactionBillAction.EXCLUDE_ALL_MATCHING_FROM_FREE_TO_SPEND) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Exclude all matching debits (loan rollover)")
+                        }
                     }
                 }
             }

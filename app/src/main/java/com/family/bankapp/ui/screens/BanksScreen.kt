@@ -717,6 +717,32 @@ fun BankDetailScreen(
                                 ui.tx,
                                 ui.linkedBillName ?: "bill"
                             )
+                        TransactionBillAction.EXCLUDE_FROM_FREE_TO_SPEND -> {
+                            vm.setTransactionExcludeFromFreeToSpend(ui.tx.plaidTransactionId, true) { result ->
+                                result.onSuccess {
+                                    transactionBillUi = null
+                                    plaidStatusMessage = "Excluded from free to spend."
+                                }.onFailure { e ->
+                                    plaidStatusMessage = e.message ?: "Could not update transaction"
+                                }
+                            }
+                            null
+                        }
+                        TransactionBillAction.INCLUDE_IN_FREE_TO_SPEND -> {
+                            vm.setTransactionExcludeFromFreeToSpend(ui.tx.plaidTransactionId, false) { result ->
+                                result.onSuccess {
+                                    transactionBillUi = null
+                                    plaidStatusMessage = "Included in free to spend again."
+                                }.onFailure { e ->
+                                    plaidStatusMessage = e.message ?: "Could not update transaction"
+                                }
+                            }
+                            null
+                        }
+                        TransactionBillAction.EXCLUDE_ALL_MATCHING_FROM_FREE_TO_SPEND ->
+                            TransactionBillUiState.ConfirmExcludeMatching(ui.tx, excluded = true)
+                        TransactionBillAction.INCLUDE_ALL_MATCHING_IN_FREE_TO_SPEND ->
+                            TransactionBillUiState.ConfirmExcludeMatching(ui.tx, excluded = false)
                     }
                 }
             )
@@ -843,6 +869,58 @@ fun BankDetailScreen(
                         }.onFailure { e ->
                             plaidStatusMessage = e.message ?: "Could not unlink"
                         }
+                    }
+                }
+            )
+        }
+        is TransactionBillUiState.ConfirmExcludeMatching -> {
+            val label = ui.tx.merchantName?.takeIf { it.isNotBlank() } ?: ui.tx.name
+            AlertDialog(
+                onDismissRequest = {
+                    transactionBillUi = TransactionBillUiState.ChooseAction(ui.tx)
+                },
+                title = {
+                    Text(
+                        if (ui.excluded) "Exclude all matching debits?" else "Include all matching debits?"
+                    )
+                },
+                text = {
+                    Text(
+                        if (ui.excluded) {
+                            "Exclude every debit labeled \"$label\" from free-to-spend misc spending? " +
+                                "Use this for loan repay-and-reborrow cycles (EarnIn, Cash App Borrow, etc.)."
+                        } else {
+                            "Count every debit labeled \"$label\" toward free-to-spend misc spending again?"
+                        }
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        vm.setMatchingDebitsExcludeFromFreeToSpend(
+                            bankId = ui.tx.bankId,
+                            name = ui.tx.name,
+                            excluded = ui.excluded
+                        ) { result ->
+                            result.onSuccess { count ->
+                                transactionBillUi = null
+                                plaidStatusMessage = if (ui.excluded) {
+                                    "Excluded $count matching debit(s) from free to spend."
+                                } else {
+                                    "Included $count matching debit(s) in free to spend."
+                                }
+                            }.onFailure { e ->
+                                plaidStatusMessage = e.message ?: "Could not update transactions"
+                            }
+                        }
+                    }) {
+                        Text(if (ui.excluded) "Exclude all" else "Include all")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        transactionBillUi = TransactionBillUiState.ChooseAction(ui.tx)
+                    }) {
+                        Text("Cancel")
                     }
                 }
             )
@@ -1369,6 +1447,13 @@ private fun PlaidTransactionRow(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
+                if (tx.excludeFromFreeToSpend) {
+                    Text(
+                        "Excluded from free to spend",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             Text(
                 amountLabel,
@@ -1546,6 +1631,10 @@ private sealed interface TransactionBillUiState {
     data class ConfirmLink(val tx: PlaidTransactionEntity, val bill: BillEntity) : TransactionBillUiState
     data class ConfirmUpdate(val tx: PlaidTransactionEntity, val bill: BillEntity) : TransactionBillUiState
     data class ConfirmUnlink(val tx: PlaidTransactionEntity, val billName: String) : TransactionBillUiState
+    data class ConfirmExcludeMatching(
+        val tx: PlaidTransactionEntity,
+        val excluded: Boolean
+    ) : TransactionBillUiState
 }
 
 private fun appendPlaidSyncSummary(builder: StringBuilder, sync: PlaidBankSyncResult) {

@@ -203,22 +203,51 @@ object FreeToSpendDebugReport {
             tx.plaidAccountId in spendingPlaidAccountIds &&
                 tx.amountCents > 0 &&
                 !tx.pending &&
+                !tx.excludeFromFreeToSpend &&
                 tx.plaidTransactionId !in linkedTransactionIds &&
                 runCatching { YearMonth.from(LocalDate.parse(tx.date)) }.getOrNull() == yearMonth
         }.sortedByDescending { it.date }
 
-        if (misc.isEmpty()) {
+        val excluded = transactions.filter { tx ->
+            tx.plaidAccountId in spendingPlaidAccountIds &&
+                tx.amountCents > 0 &&
+                !tx.pending &&
+                tx.excludeFromFreeToSpend &&
+                tx.plaidTransactionId !in linkedTransactionIds &&
+                runCatching { YearMonth.from(LocalDate.parse(tx.date)) }.getOrNull() == yearMonth
+        }.sortedByDescending { it.date }
+
+        if (misc.isEmpty() && excluded.isEmpty()) {
             appendLine("(none)")
             return
         }
 
-        misc.forEach { tx ->
-            val accountName = accountNameByPlaidId[tx.plaidAccountId] ?: tx.plaidAccountId
+        if (misc.isNotEmpty()) {
+            misc.forEach { tx ->
+                val accountName = accountNameByPlaidId[tx.plaidAccountId] ?: tx.plaidAccountId
+                appendLine(
+                    "- ${tx.date} | ${tx.name} | ${MoneyFormatter.format(tx.amountCents)} | account: $accountName"
+                )
+            }
+            appendLine("Total misc spending: ${MoneyFormatter.format(misc.sumOf { it.amountCents })}")
+        } else {
+            appendLine("(no counted misc spending)")
+        }
+
+        if (excluded.isNotEmpty()) {
+            appendLine()
+            appendLine("Excluded from free to spend (${excluded.size}):")
+            excluded.forEach { tx ->
+                val accountName = accountNameByPlaidId[tx.plaidAccountId] ?: tx.plaidAccountId
+                appendLine(
+                    "- ${tx.date} | ${tx.name} | ${MoneyFormatter.format(tx.amountCents)} | account: $accountName"
+                )
+            }
             appendLine(
-                "- ${tx.date} | ${tx.name} | ${MoneyFormatter.format(tx.amountCents)} | account: $accountName"
+                "Total excluded: ${MoneyFormatter.format(excluded.sumOf { it.amountCents })} " +
+                    "(loan rollovers, transfers, etc.)"
             )
         }
-        appendLine("Total misc spending: ${MoneyFormatter.format(misc.sumOf { it.amountCents })}")
     }
 
     private fun StringBuilder.appendAccounts(

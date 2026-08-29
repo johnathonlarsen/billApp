@@ -296,7 +296,8 @@ private fun FreeToSpendCard(
             )
             if (fts.plaidMiscSpentCents > 0) {
                 Text(
-                    "Spending = Plaid debits this month not linked to a bill.",
+                    "Spending = Plaid debits this month not linked to a bill. " +
+                        "Loan repay-and-reborrow? Exclude those on the Banks tab.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

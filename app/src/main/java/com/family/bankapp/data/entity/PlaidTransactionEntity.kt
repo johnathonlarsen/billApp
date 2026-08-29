@@ -29,5 +29,7 @@ data class PlaidTransactionEntity(
     val name: String,
     val merchantName: String? = null,
     val pending: Boolean = false,
-    val syncedAt: Long = System.currentTimeMillis()
+    val syncedAt: Long = System.currentTimeMillis(),
+    /** When true, this debit is omitted from free-to-spend misc Plaid spending (e.g. loan rollovers). */
+    val excludeFromFreeToSpend: Boolean = false
 )

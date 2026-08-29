@@ -195,6 +195,21 @@ interface PlaidTransactionDao {
 
     @Query("SELECT * FROM plaid_transactions ORDER BY date DESC")
     suspend fun getAllSync(): List<com.family.bankapp.data.entity.PlaidTransactionEntity>
+
+    @Query(
+        "UPDATE plaid_transactions SET excludeFromFreeToSpend = :excluded WHERE plaidTransactionId = :txId"
+    )
+    suspend fun setExcludeFromFreeToSpend(txId: String, excluded: Boolean)
+
+    @Query(
+        "UPDATE plaid_transactions SET excludeFromFreeToSpend = :excluded " +
+            "WHERE bankId = :bankId AND name = :name AND amountCents > 0"
+    )
+    suspend fun setExcludeFromFreeToSpendForMatchingDebits(
+        bankId: Long,
+        name: String,
+        excluded: Boolean
+    ): Int
 }
 
 @Dao

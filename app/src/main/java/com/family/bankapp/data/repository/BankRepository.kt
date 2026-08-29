@@ -218,6 +218,8 @@ class BankRepository(
             plaidTransactionDao.deleteByPlaidIds(removedIds)
         }
         if (added.isNotEmpty()) {
+            val existingFlags = plaidTransactionDao.getAllSync()
+                .associate { it.plaidTransactionId to it.excludeFromFreeToSpend }
             plaidTransactionDao.upsertAll(
                 added.map { tx ->
                     PlaidTransactionEntity(
@@ -229,7 +231,8 @@ class BankRepository(
                         name = tx.name,
                         merchantName = tx.merchantName,
                         pending = tx.pending,
-                        syncedAt = now
+                        syncedAt = now,
+                        excludeFromFreeToSpend = existingFlags[tx.transactionId] == true
                     )
                 }
             )
@@ -549,6 +552,17 @@ class BankRepository(
     private suspend fun undoPaymentRecord(record: PaymentRecordEntity) {
         paymentRecordDao.delete(record)
     }
+
+    suspend fun setTransactionExcludeFromFreeToSpend(txId: String, excluded: Boolean) {
+        plaidTransactionDao.setExcludeFromFreeToSpend(txId, excluded)
+    }
+
+    /** Excludes or includes all debit transactions with the same Plaid name label (e.g. EarnIn). */
+    suspend fun setMatchingDebitsExcludeFromFreeToSpend(
+        bankId: Long,
+        name: String,
+        excluded: Boolean
+    ): Int = plaidTransactionDao.setExcludeFromFreeToSpendForMatchingDebits(bankId, name, excluded)
 }
 
 data class OverviewData(
