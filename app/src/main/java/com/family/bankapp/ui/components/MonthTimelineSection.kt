@@ -57,7 +57,8 @@ fun MonthTimelineSection(
     modifier: Modifier = Modifier,
     onMarkBillPaid: ((MonthBillEntry) -> Unit)? = null,
     onEditBillPayment: ((MonthBillEntry) -> Unit)? = null,
-    onRemoveBillFromMonth: ((MonthBillEntry) -> Unit)? = null
+    onRemoveBillFromMonth: ((MonthBillEntry) -> Unit)? = null,
+    onMarkAllPaid: ((MonthOverview) -> Unit)? = null
 ) {
     Column(
         modifier = modifier
@@ -96,7 +97,8 @@ fun MonthTimelineSection(
                     overview = overview,
                     onMarkBillPaid = onMarkBillPaid,
                     onEditBillPayment = onEditBillPayment,
-                    onRemoveBillFromMonth = onRemoveBillFromMonth
+                    onRemoveBillFromMonth = onRemoveBillFromMonth,
+                    onMarkAllPaid = onMarkAllPaid
                 )
             }
         }
@@ -153,7 +155,8 @@ private fun MonthDetailCard(
     overview: MonthOverview,
     onMarkBillPaid: ((MonthBillEntry) -> Unit)?,
     onEditBillPayment: ((MonthBillEntry) -> Unit)?,
-    onRemoveBillFromMonth: ((MonthBillEntry) -> Unit)?
+    onRemoveBillFromMonth: ((MonthBillEntry) -> Unit)?,
+    onMarkAllPaid: ((MonthOverview) -> Unit)?
 ) {
     val dateFormatter = DateTimeFormatter.ofPattern("MMM d")
     val containerColor = when (overview.status) {
@@ -192,6 +195,21 @@ private fun MonthDetailCard(
                                 " / " + MoneyFormatter.format(overview.totalDueCents),
                             fontWeight = FontWeight.Medium
                         )
+                    }
+
+                    val unpaidCount = overview.totalCount - overview.paidCount
+                    if (unpaidCount > 0 && onMarkAllPaid != null) {
+                        Button(
+                            onClick = { onMarkAllPaid(overview) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier.padding(end = 8.dp)
+                            )
+                            Text("Mark all paid ($unpaidCount)")
+                        }
                     }
 
                     overview.bills.forEach { entry ->

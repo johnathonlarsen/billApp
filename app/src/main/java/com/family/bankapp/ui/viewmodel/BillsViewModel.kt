@@ -117,6 +117,12 @@ class BillsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun markAllPaidForMonth(overview: MonthOverview) {
+        viewModelScope.launch {
+            repository.markAllBillsPaidForMonth(overview.bills.filter { !it.isPaid })
+        }
+    }
+
     fun updatePayment(
         paymentId: Long,
         accountId: Long?,

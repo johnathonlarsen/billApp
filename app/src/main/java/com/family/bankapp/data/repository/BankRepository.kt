@@ -22,6 +22,7 @@ import com.family.bankapp.plaid.PlaidTransactionSnapshot
 import com.family.bankapp.plaid.mapPlaidAccountType
 import com.family.bankapp.util.BillSchedule
 import com.family.bankapp.util.BillTransactionMatcher
+import com.family.bankapp.util.MonthBillEntry
 import java.time.LocalDate
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -505,6 +506,17 @@ class BankRepository(
             )
         )
         billDao.update(bill.copy(lastPaidAt = now))
+    }
+
+    suspend fun markAllBillsPaidForMonth(entries: List<MonthBillEntry>) {
+        entries.filter { !it.isPaid }.forEach { entry ->
+            markBillPaid(
+                bill = entry.bill,
+                accountId = entry.bill.linkedAccountId,
+                cycleDueDate = entry.dueDate,
+                amountCents = entry.bill.amountCents
+            )
+        }
     }
 
     suspend fun undoBillPayment(paymentId: Long) {

@@ -56,6 +56,7 @@ import com.family.bankapp.ui.viewmodel.BillsViewModel
 import com.family.bankapp.util.BillCsvImportResult
 import com.family.bankapp.util.BillSchedule
 import com.family.bankapp.util.MonthBillEntry
+import com.family.bankapp.util.MonthOverview
 import com.family.bankapp.util.MoneyFormatter
 import java.time.Instant
 import java.time.LocalDate
@@ -82,6 +83,7 @@ fun BillsScreen(
     var editPaymentTarget by remember { mutableStateOf<MonthBillEntry?>(null) }
     var undoTarget by remember { mutableStateOf<BillListItem?>(null) }
     var skipTarget by remember { mutableStateOf<MonthBillEntry?>(null) }
+    var markAllPaidTarget by remember { mutableStateOf<MonthOverview?>(null) }
     var importResult by remember { mutableStateOf<BillCsvImportResult?>(null) }
     var pendingExportCsv by remember { mutableStateOf<String?>(null) }
     var exportMessage by remember { mutableStateOf<String?>(null) }
@@ -186,7 +188,8 @@ fun BillsScreen(
                             editPaymentTarget = entry
                         }
                     },
-                    onRemoveBillFromMonth = { skipTarget = it }
+                    onRemoveBillFromMonth = { skipTarget = it },
+                    onMarkAllPaid = { markAllPaidTarget = it }
                 )
             }
 
@@ -299,6 +302,32 @@ fun BillsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { skipTarget = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    markAllPaidTarget?.let { overview ->
+        val unpaid = overview.bills.filter { !it.isPaid }
+        val unpaidTotalCents = unpaid.sumOf { it.bill.amountCents }
+        AlertDialog(
+            onDismissRequest = { markAllPaidTarget = null },
+            title = { Text("Mark all paid for ${overview.fullLabel}?") },
+            text = {
+                Text(
+                    "Mark ${unpaid.size} unpaid bill(s) as paid at their usual amounts " +
+                        "(${MoneyFormatter.format(unpaidTotalCents)} total)?"
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    vm.markAllPaidForMonth(overview)
+                    markAllPaidTarget = null
+                }) {
+                    Text("Mark all paid")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { markAllPaidTarget = null }) { Text("Cancel") }
             }
         )
     }
