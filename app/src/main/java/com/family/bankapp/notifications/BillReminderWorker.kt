@@ -22,9 +22,10 @@ class BillReminderWorker(
         val settings = SettingsRepository(applicationContext)
         val defaultReminderDays = settings.defaultReminderDays.first()
         val bills = db.billDao().getActiveSync()
+        val payments = db.paymentRecordDao().getAllSync()
 
         bills.forEach { bill ->
-            val dueInfo = BillSchedule.enrich(bill)
+            val dueInfo = BillSchedule.enrich(bill, payments)
             if (dueInfo.isPaidThisCycle) return@forEach
 
             val reminderDays = bill.reminderDaysBefore.takeIf { it > 0 } ?: defaultReminderDays
@@ -34,7 +35,7 @@ class BillReminderWorker(
             if (shouldNotify) {
                 NotificationHelper.showBillReminder(
                     applicationContext,
-                    bill,
+                    dueInfo,
                     bill.id.toInt()
                 )
             }

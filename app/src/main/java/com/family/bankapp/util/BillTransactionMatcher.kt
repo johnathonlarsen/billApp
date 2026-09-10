@@ -38,11 +38,21 @@ object BillTransactionMatcher {
         if (bill.plaidCycleMonthOffset == null) return false
         if (tx.amountCents <= 0) return false
         if (!textMatches(tx, pattern)) return false
-        if (!amountQualifies(bill.amountCents, tx.amountCents)) return false
         if (!accountMatches(tx, bill, accounts)) return false
         val txDate = transactionDate(tx) ?: return false
         val cycleDue = resolvePaymentCycle(bill, txDate, skips, payments) ?: return false
-        if (BillSchedule.paymentForCycle(payments, bill.id, cycleDue) != null) return false
+        val existing = BillSchedule.paymentForCycle(payments, bill.id, cycleDue)
+        if (BillSchedule.isFullyPaid(bill, existing)) return false
+        val amountTarget = if (BillSchedule.isPartiallyPaid(bill, existing)) {
+            BillSchedule.remainingCents(bill, existing)
+        } else {
+            bill.amountCents
+        }
+        if (!amountQualifies(amountTarget, tx.amountCents) &&
+            !amountQualifies(bill.amountCents, tx.amountCents)
+        ) {
+            return false
+        }
         return true
     }
 
@@ -91,7 +101,8 @@ object BillTransactionMatcher {
         val offset = bill.plaidCycleMonthOffset ?: return null
         val due = PlaidBillCycle.dueDateForOffset(bill, txDate, offset)
         if (BillSchedule.isCycleSkipped(skips, bill.id, due)) return null
-        if (BillSchedule.paymentForCycle(payments, bill.id, due) != null) return null
+        val existing = BillSchedule.paymentForCycle(payments, bill.id, due)
+        if (BillSchedule.isFullyPaid(bill, existing)) return null
         return due
     }
 

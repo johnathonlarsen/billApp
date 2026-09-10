@@ -131,13 +131,18 @@ object FreeToSpendDebugReport {
             val dueDate = BillSchedule.dueDateForYearMonth(bill, yearMonth)
             if (BillSchedule.isCycleSkipped(skips, bill.id, dueDate)) return@forEach
             val payment = BillSchedule.paymentForCycle(payments, bill.id, dueDate)
-            val paid = payment != null
-            val cycleAmount = BillSchedule.amountForCycle(bill, payment)
+            val status = when {
+                BillSchedule.isFullyPaid(bill, payment) -> "PAID"
+                BillSchedule.isPartiallyPaid(bill, payment) ->
+                    "PARTIAL (${MoneyFormatter.format(BillSchedule.paidAmountCents(payment))} of ${MoneyFormatter.format(bill.amountCents)})"
+                else -> "UNPAID"
+            }
+            val cycleAmount = BillSchedule.reservedAmountForCycle(bill, payment)
             val countsToward = "counts toward free to spend"
             any = true
             appendLine(
                 "- ${bill.name} | ${bill.category.label} | due ${dueDate.format(dateFormatter)} | " +
-                    "${if (paid) "PAID" else "UNPAID"} | ${MoneyFormatter.format(cycleAmount)} | $countsToward"
+                    "$status | ${MoneyFormatter.format(cycleAmount)} | $countsToward"
             )
         }
         if (!any) appendLine("(none)")
@@ -169,11 +174,13 @@ object FreeToSpendDebugReport {
                 val dueDate = BillSchedule.dueDateForYearMonth(bill, month)
                 if (BillSchedule.isCycleSkipped(skips, bill.id, dueDate)) return@forEach
                 if (month.isBefore(YearMonth.from(today)) && !dueDate.isBefore(today)) return@forEach
-                if (BillSchedule.paymentForCycle(payments, bill.id, dueDate) != null) return@forEach
+                val payment = BillSchedule.paymentForCycle(payments, bill.id, dueDate)
+                val remaining = BillSchedule.remainingCents(bill, payment)
+                if (remaining <= 0L) return@forEach
                 any = true
                 appendLine(
                     "- ${bill.name} | ${month.format(monthFormatter)} | due ${dueDate.format(dateFormatter)} | " +
-                        MoneyFormatter.format(bill.amountCents)
+                        MoneyFormatter.format(remaining)
                 )
             }
             month = month.minusMonths(1)

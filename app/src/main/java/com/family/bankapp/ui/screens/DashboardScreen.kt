@@ -114,7 +114,7 @@ fun DashboardScreen(padding: PaddingValues) {
                                     MonthPillStatus.ALL_PAID -> "All ${month.totalCount} bills paid"
                                     MonthPillStatus.PARTIAL ->
                                         "${month.paidCount} of ${month.totalCount} paid · " +
-                                            MoneyFormatter.format(month.totalDueCents - month.totalPaidCents) +
+                                            MoneyFormatter.format(month.remainingDueCents) +
                                             " still due"
                                     MonthPillStatus.EMPTY -> "No bills this month"
                                 }
@@ -166,11 +166,18 @@ fun DashboardScreen(padding: PaddingValues) {
                 }
             }
             items(state.overdueBills) { item ->
+                val remaining = item.dueInfo.remainingCents
+                val subtitle = if (item.dueInfo.isPartialThisCycle) {
+                    "Due ${item.dueInfo.dueDate.format(formatter)} · overdue · " +
+                        "${MoneyFormatter.format(remaining)} remaining"
+                } else {
+                    "Due ${item.dueInfo.dueDate.format(formatter)} · overdue"
+                }
                 BillSummaryCard(
                     name = item.dueInfo.bill.name,
-                    subtitle = "Due ${item.dueInfo.dueDate.format(formatter)} · overdue",
+                    subtitle = subtitle,
                     payFrom = item.payFromLabel,
-                    amountCents = item.dueInfo.bill.amountCents,
+                    amountCents = remaining,
                     accentColor = MaterialTheme.colorScheme.error
                 )
             }
@@ -199,11 +206,18 @@ fun DashboardScreen(padding: PaddingValues) {
             }
         } else {
             items(state.upcomingBills) { item ->
+                val remaining = item.dueInfo.remainingCents
+                val subtitle = buildString {
+                    append("Due ${item.dueInfo.dueDate.format(formatter)} · ${item.dueInfo.bill.category.label}")
+                    if (item.dueInfo.isPartialThisCycle) {
+                        append(" · ${MoneyFormatter.format(remaining)} remaining")
+                    }
+                }
                 BillSummaryCard(
                     name = item.dueInfo.bill.name,
-                    subtitle = "Due ${item.dueInfo.dueDate.format(formatter)} · ${item.dueInfo.bill.category.label}",
+                    subtitle = subtitle,
                     payFrom = item.payFromLabel,
-                    amountCents = item.dueInfo.bill.amountCents,
+                    amountCents = remaining,
                     accentColor = if (item.dueInfo.daysUntilDue <= 3) StatusYellow else MaterialTheme.colorScheme.onSurface
                 )
             }

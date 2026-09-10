@@ -23,6 +23,7 @@ import com.family.bankapp.plaid.mapPlaidAccountType
 import com.family.bankapp.util.BillSchedule
 import com.family.bankapp.util.BillTransactionMatcher
 import com.family.bankapp.util.MonthBillEntry
+import com.family.bankapp.util.MonthPaymentAllocator
 import java.time.LocalDate
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -452,7 +453,8 @@ class BankRepository(
         val cycleDue = BillTransactionMatcher.resolvePaymentCycle(bill, txDate, skips, payments)
             ?: return
         val cycleMillis = BillSchedule.toCycleMillis(cycleDue)
-        if (paymentRecordDao.getForCycle(bill.id, cycleMillis) != null) {
+        val existing = paymentRecordDao.getForCycle(bill.id, cycleMillis)
+        if (existing != null && BillSchedule.isFullyPaid(bill, existing)) {
             plaidPaymentLinkDao.insert(
                 PlaidPaymentLinkEntity(
                     plaidTransactionId = tx.plaidTransactionId,
@@ -464,18 +466,32 @@ class BankRepository(
 
         val accountId = accounts.find { it.plaidAccountId == tx.plaidAccountId }?.id ?: bill.linkedAccountId
         val paidAt = BillTransactionMatcher.paidAtMillisFromTransaction(tx)
-        val recordId = paymentRecordDao.insert(
-            PaymentRecordEntity(
-                billId = bill.id,
-                accountId = accountId,
-                amountCents = tx.amountCents,
-                paidAt = paidAt,
-                cycleDueDateMillis = cycleMillis,
-                note = "Auto · Plaid: ${tx.name}",
-                plaidTransactionId = tx.plaidTransactionId
+        val combinedAmount = (existing?.amountCents ?: 0L) + tx.amountCents
+        val recordId = if (existing != null) {
+            paymentRecordDao.update(
+                existing.copy(
+                    accountId = accountId ?: existing.accountId,
+                    amountCents = combinedAmount,
+                    paidAt = paidAt,
+                    note = "Auto · Plaid: ${tx.name}",
+                    plaidTransactionId = tx.plaidTransactionId
+                )
             )
-        )
-        billDao.update(bill.copy(lastPaidAt = paidAt))
+            existing.id
+        } else {
+            paymentRecordDao.insert(
+                PaymentRecordEntity(
+                    billId = bill.id,
+                    accountId = accountId,
+                    amountCents = tx.amountCents,
+                    paidAt = paidAt,
+                    cycleDueDateMillis = cycleMillis,
+                    note = "Auto · Plaid: ${tx.name}",
+                    plaidTransactionId = tx.plaidTransactionId
+                )
+            )
+        }
+        refreshLastPaidAt(bill.id)
         plaidPaymentLinkDao.insert(
             PlaidPaymentLinkEntity(
                 plaidTransactionId = tx.plaidTransactionId,
@@ -493,9 +509,8 @@ class BankRepository(
         note: String = ""
     ) {
         val cycleMillis = BillSchedule.toCycleMillis(cycleDueDate)
-        paymentRecordDao.getForCycle(bill.id, cycleMillis)?.let { existing ->
-            undoPaymentRecord(existing)
-        }
+        val existing = paymentRecordDao.getForCycle(bill.id, cycleMillis)
+        existing?.let { undoPaymentRecord(it) }
 
         val now = System.currentTimeMillis()
         paymentRecordDao.insert(
@@ -505,19 +520,26 @@ class BankRepository(
                 amountCents = amountCents,
                 paidAt = now,
                 cycleDueDateMillis = cycleMillis,
-                note = note
+                note = note,
+                plaidTransactionId = existing?.plaidTransactionId
             )
         )
-        billDao.update(bill.copy(lastPaidAt = now))
+        refreshLastPaidAt(bill.id)
     }
 
     suspend fun markAllBillsPaidForMonth(entries: List<MonthBillEntry>) {
-        entries.filter { !it.isPaid }.forEach { entry ->
+        val outstanding = entries.filter { !it.isPaid }
+        applyMonthPayment(outstanding, outstanding.sumOf { it.remainingCents })
+    }
+
+    suspend fun applyMonthPayment(entries: List<MonthBillEntry>, totalPaidCents: Long) {
+        val outstanding = entries.filter { !it.isPaid }
+        MonthPaymentAllocator.allocate(outstanding, totalPaidCents).forEach { allocation ->
             markBillPaid(
-                bill = entry.bill,
-                accountId = entry.bill.linkedAccountId,
-                cycleDueDate = entry.dueDate,
-                amountCents = entry.bill.amountCents
+                bill = allocation.entry.bill,
+                accountId = allocation.entry.bill.linkedAccountId,
+                cycleDueDate = allocation.entry.dueDate,
+                amountCents = allocation.newAmountCents
             )
         }
     }
@@ -525,9 +547,7 @@ class BankRepository(
     suspend fun undoBillPayment(paymentId: Long) {
         val record = paymentRecordDao.getById(paymentId) ?: return
         paymentRecordDao.delete(record)
-        val bill = billDao.getById(record.billId) ?: return
-        val latest = paymentRecordDao.getLatestForBill(bill.id)
-        billDao.update(bill.copy(lastPaidAt = latest?.paidAt))
+        refreshLastPaidAt(record.billId)
     }
 
     suspend fun updateBillPayment(
@@ -544,9 +564,15 @@ class BankRepository(
                 paidAt = paidAtMillis
             )
         )
-        val bill = billDao.getById(existing.billId) ?: return
-        val latest = paymentRecordDao.getLatestForBill(bill.id)
-        billDao.update(bill.copy(lastPaidAt = latest?.paidAt))
+        refreshLastPaidAt(existing.billId)
+    }
+
+    private suspend fun refreshLastPaidAt(billId: Long) {
+        val bill = billDao.getById(billId) ?: return
+        val latestFullyPaid = paymentRecordDao.getAllSync()
+            .filter { it.billId == billId && it.amountCents >= bill.amountCents }
+            .maxByOrNull { it.paidAt }
+        billDao.update(bill.copy(lastPaidAt = latestFullyPaid?.paidAt))
     }
 
     private suspend fun undoPaymentRecord(record: PaymentRecordEntity) {
