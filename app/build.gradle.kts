@@ -87,7 +87,7 @@ afterEvaluate {
                   "apkUrl": "https://raw.githubusercontent.com/johnathonlarsen/billApp/main/docs/FamilyBank.apk",
                   "apkSizeBytes": $apkSizeBytes,
                   "releasedAt": "${Instant.now()}",
-                  "notes": "Family Bank update. If install fails with a package conflict, uninstall the old app once, then install again. Future updates will install in place."
+                  "notes": "Pay remaining month totals or individual bills at a lower amount. Partial payments stay outstanding until the usual total is covered. If install fails with a package conflict, uninstall the old app once, then install again. Future updates will install in place."
                 }
             """.trimIndent()
             docsDir.resolve("app-update.json").writeText(manifest)
