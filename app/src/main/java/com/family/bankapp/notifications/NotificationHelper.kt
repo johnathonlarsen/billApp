@@ -10,8 +10,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.family.bankapp.MainActivity
 import com.family.bankapp.R
-import com.family.bankapp.data.entity.BillEntity
-import com.family.bankapp.util.BillSchedule
+import com.family.bankapp.util.BillDueInfo
 import com.family.bankapp.util.MoneyFormatter
 
 object NotificationHelper {
@@ -32,14 +31,21 @@ object NotificationHelper {
         }
     }
 
-    fun showBillReminder(context: Context, bill: BillEntity, notificationId: Int) {
+    fun showBillReminder(
+        context: Context,
+        dueInfo: BillDueInfo,
+        notificationId: Int
+    ) {
         createChannel(context)
-        val dueInfo = BillSchedule.enrich(bill)
+        val bill = dueInfo.bill
+        val amountLabel = MoneyFormatter.format(dueInfo.remainingCents)
         val title = if (dueInfo.isOverdue) "Overdue: ${bill.name}" else "Upcoming bill: ${bill.name}"
         val text = when {
-            dueInfo.isOverdue -> "Was due ${-dueInfo.daysUntilDue} day(s) ago · ${MoneyFormatter.format(bill.amountCents)}"
-            dueInfo.daysUntilDue == 0L -> "Due today · ${MoneyFormatter.format(bill.amountCents)}"
-            else -> "Due in ${dueInfo.daysUntilDue} day(s) · ${MoneyFormatter.format(bill.amountCents)}"
+            dueInfo.isOverdue -> "Was due ${-dueInfo.daysUntilDue} day(s) ago · $amountLabel"
+            dueInfo.daysUntilDue == 0L -> "Due today · $amountLabel"
+            dueInfo.isPartialThisCycle ->
+                "Due in ${dueInfo.daysUntilDue} day(s) · $amountLabel remaining"
+            else -> "Due in ${dueInfo.daysUntilDue} day(s) · $amountLabel"
         }
 
         val intent = Intent(context, MainActivity::class.java).apply {

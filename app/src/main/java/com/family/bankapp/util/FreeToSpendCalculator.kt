@@ -121,7 +121,7 @@ object FreeToSpendCalculator {
             val dueDate = BillSchedule.dueDateForYearMonth(bill, yearMonth)
             if (BillSchedule.isCycleSkipped(skips, bill.id, dueDate)) return@forEach
             val payment = BillSchedule.paymentForCycle(payments, bill.id, dueDate)
-            total += BillSchedule.amountForCycle(bill, payment)
+            total += BillSchedule.reservedAmountForCycle(bill, payment)
         }
         return total
     }
@@ -199,8 +199,8 @@ object FreeToSpendCalculator {
             if (BillSchedule.isCycleSkipped(skips, bill.id, dueDate)) return@sumOf 0L
             if (yearMonth.isBefore(currentMonth) && !dueDate.isBefore(today)) return@sumOf 0L
             if (yearMonth == currentMonth && !countUpcomingInMonth && dueDate.isAfter(today)) return@sumOf 0L
-            val paid = BillSchedule.paymentForCycle(payments, bill.id, dueDate) != null
-            if (paid) 0L else bill.amountCents
+            val payment = BillSchedule.paymentForCycle(payments, bill.id, dueDate)
+            BillSchedule.remainingCents(bill, payment)
         }
     }
 }

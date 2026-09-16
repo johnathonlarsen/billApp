@@ -118,8 +118,12 @@ class BillsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun markAllPaidForMonth(overview: MonthOverview) {
+        applyMonthPayment(overview, overview.outstandingBills.sumOf { it.remainingCents })
+    }
+
+    fun applyMonthPayment(overview: MonthOverview, amountCents: Long) {
         viewModelScope.launch {
-            repository.markAllBillsPaidForMonth(overview.bills.filter { !it.isPaid })
+            repository.applyMonthPayment(overview.outstandingBills, amountCents)
         }
     }
 

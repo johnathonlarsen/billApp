@@ -57,6 +57,7 @@ import com.family.bankapp.util.BillCsvImportResult
 import com.family.bankapp.util.BillSchedule
 import com.family.bankapp.util.MonthBillEntry
 import com.family.bankapp.util.MonthOverview
+import com.family.bankapp.util.MonthPaymentAllocator
 import com.family.bankapp.util.MoneyFormatter
 import java.time.Instant
 import java.time.LocalDate
@@ -307,27 +308,12 @@ fun BillsScreen(
     }
 
     markAllPaidTarget?.let { overview ->
-        val unpaid = overview.bills.filter { !it.isPaid }
-        val unpaidTotalCents = unpaid.sumOf { it.bill.amountCents }
-        AlertDialog(
-            onDismissRequest = { markAllPaidTarget = null },
-            title = { Text("Mark all paid for ${overview.fullLabel}?") },
-            text = {
-                Text(
-                    "Mark ${unpaid.size} unpaid bill(s) as paid at their usual amounts " +
-                        "(${MoneyFormatter.format(unpaidTotalCents)} total)?"
-                )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    vm.markAllPaidForMonth(overview)
-                    markAllPaidTarget = null
-                }) {
-                    Text("Mark all paid")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { markAllPaidTarget = null }) { Text("Cancel") }
+        PayMonthBillsDialog(
+            overview = overview,
+            onDismiss = { markAllPaidTarget = null },
+            onConfirm = { amountCents ->
+                vm.applyMonthPayment(overview, amountCents)
+                markAllPaidTarget = null
             }
         )
     }
@@ -384,6 +370,7 @@ private fun BillCard(
     val formatter = DateTimeFormatter.ofPattern("MMM d")
     val statusColor = when {
         dueInfo.isPaidThisCycle -> MaterialTheme.colorScheme.primary
+        dueInfo.isPartialThisCycle -> MaterialTheme.colorScheme.tertiary
         dueInfo.isOverdue -> MaterialTheme.colorScheme.error
         dueInfo.daysUntilDue <= 3 -> MaterialTheme.colorScheme.tertiary
         else -> MaterialTheme.colorScheme.onSurface
@@ -397,6 +384,10 @@ private fun BillCard(
     val statusText = when {
         dueInfo.isPaidThisCycle && paidCycleLabel != null -> "Paid for $paidCycleLabel"
         dueInfo.isPaidThisCycle -> "Paid this cycle"
+        dueInfo.isOverdue && dueInfo.isPartialThisCycle ->
+            "Overdue · ${MoneyFormatter.format(dueInfo.remainingCents)} remaining"
+        dueInfo.isPartialThisCycle ->
+            "Partial · ${MoneyFormatter.format(dueInfo.remainingCents)} remaining"
         dueInfo.isOverdue -> "Overdue"
         dueInfo.daysUntilDue == 0L -> "Due today"
         else -> "Due ${dueInfo.dueDate.format(formatter)}"
@@ -430,7 +421,11 @@ private fun BillCard(
                     }
                 }
                 MoneyText(
-                    BillSchedule.amountForCycle(dueInfo.bill, dueInfo.cyclePayment),
+                    if (dueInfo.isPaidThisCycle) {
+                        BillSchedule.amountForCycle(dueInfo.bill, dueInfo.cyclePayment)
+                    } else {
+                        dueInfo.remainingCents
+                    },
                     color = statusColor
                 )
             }
@@ -444,6 +439,14 @@ private fun BillCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            if (dueInfo.isPartialThisCycle && dueInfo.cyclePayment != null) {
+                Text(
+                    "Paid ${MoneyFormatter.format(dueInfo.cyclePayment.amountCents)} of " +
+                        MoneyFormatter.format(dueInfo.bill.amountCents),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Text(statusText, color = statusColor, style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = onEdit) { Text("Edit") }
@@ -453,9 +456,15 @@ private fun BillCard(
                         Text("Undo")
                     }
                 } else {
+                    if (dueInfo.isPartialThisCycle && dueInfo.cyclePayment != null) {
+                        OutlinedButton(onClick = onUndoPaid) {
+                            Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null)
+                            Text("Undo")
+                        }
+                    }
                     Button(onClick = onMarkPaid) {
                         Icon(Icons.Default.Check, contentDescription = null)
-                        Text("Mark paid")
+                        Text(if (dueInfo.isPartialThisCycle) "Pay rest" else "Mark paid")
                     }
                 }
             }
@@ -485,7 +494,12 @@ private fun MarkPaidDialog(
     val existingPayment = BillSchedule.paymentForCycle(item.billPayments, bill.id, cycleDueDate)
 
     LaunchedEffect(cycleDueDate, existingPayment?.amountCents) {
-        amountText = MoneyFormatter.format(existingPayment?.amountCents ?: bill.amountCents)
+        val defaultAmount = when {
+            existingPayment != null && existingPayment.amountCents >= bill.amountCents ->
+                existingPayment.amountCents
+            else -> bill.amountCents
+        }
+        amountText = MoneyFormatter.format(defaultAmount)
         amountError = null
     }
 
@@ -499,9 +513,7 @@ private fun MarkPaidDialog(
         val parsed = MoneyFormatter.parse(amountText)
         when {
             parsed == null -> amountError = "Enter a valid amount"
-            parsed < bill.amountCents -> {
-                amountError = "Must be at least ${MoneyFormatter.format(bill.amountCents)}"
-            }
+            parsed <= 0L -> amountError = "Enter an amount greater than $0"
             else -> {
                 amountError = null
                 onConfirm(cycleDueDate, parsed)
@@ -583,7 +595,7 @@ private fun MarkPaidDialog(
                     label = { Text("Amount paid") },
                     supportingText = {
                         Text(
-                            amountError ?: "Can be higher than usual if this month cost more — not less.",
+                            amountError ?: "Can be higher or lower than usual. Lower amounts stay as a partial payment.",
                             color = if (amountError != null) {
                                 MaterialTheme.colorScheme.error
                             } else {
@@ -597,8 +609,15 @@ private fun MarkPaidDialog(
                 )
 
                 if (existingPayment != null) {
+                    val remaining = BillSchedule.remainingCents(bill, existingPayment)
                     Text(
-                        "This period is already marked paid. Confirming will replace that payment.",
+                        if (remaining > 0L) {
+                            "Already paid ${MoneyFormatter.format(existingPayment.amountCents)}. " +
+                                "Confirming replaces that with the amount below " +
+                                "(${MoneyFormatter.format(remaining)} still due)."
+                        } else {
+                            "This period is already marked paid. Confirming will replace that payment."
+                        },
                         color = MaterialTheme.colorScheme.tertiary,
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -652,8 +671,8 @@ private fun EditPaymentDialog(
                 amountError = "Enter a valid amount"
                 paidDateError = null
             }
-            parsedAmount < bill.amountCents -> {
-                amountError = "Must be at least ${MoneyFormatter.format(bill.amountCents)}"
+            parsedAmount <= 0L -> {
+                amountError = "Enter an amount greater than $0"
                 paidDateError = null
             }
             parsedDate == null -> {
@@ -710,7 +729,7 @@ private fun EditPaymentDialog(
                     label = { Text("Amount paid") },
                     supportingText = {
                         Text(
-                            amountError ?: "Usual amount: ${MoneyFormatter.format(bill.amountCents)}",
+                            amountError ?: "Usual amount: ${MoneyFormatter.format(bill.amountCents)}. Lower amounts stay as a partial payment.",
                             color = if (amountError != null) {
                                 MaterialTheme.colorScheme.error
                             } else {
@@ -786,6 +805,97 @@ private fun UndoPaidDialog(
         },
         dismissButton = {
             OutlinedButton(onClick = onDismiss) { Text("Keep paid") }
+        }
+    )
+}
+
+@Composable
+private fun PayMonthBillsDialog(
+    overview: MonthOverview,
+    onDismiss: () -> Unit,
+    onConfirm: (Long) -> Unit
+) {
+    val outstanding = overview.outstandingBills
+    val remainingTotal = outstanding.sumOf { it.remainingCents }
+    var amountText by remember(overview.yearMonth) {
+        mutableStateOf(MoneyFormatter.format(remainingTotal))
+    }
+    var amountError by remember { mutableStateOf<String?>(null) }
+    val parsedAmount = MoneyFormatter.parse(amountText)
+    val preview = parsedAmount?.takeIf { it > 0L }?.let {
+        MonthPaymentAllocator.preview(outstanding, it)
+    }
+
+    fun submit() {
+        val parsed = MoneyFormatter.parse(amountText)
+        when {
+            parsed == null -> amountError = "Enter a valid amount"
+            parsed <= 0L -> amountError = "Enter an amount greater than $0"
+            else -> {
+                amountError = null
+                onConfirm(parsed)
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Pay ${overview.fullLabel} bills") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "${outstanding.size} unpaid bill(s) · " +
+                        "${MoneyFormatter.format(remainingTotal)} remaining. " +
+                        "Applied in due-date order. A lower amount is a partial month payment.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = {
+                        amountText = it
+                        amountError = null
+                    },
+                    label = { Text("Amount paid") },
+                    supportingText = {
+                        Text(
+                            amountError ?: "Usual remaining: ${MoneyFormatter.format(remainingTotal)}",
+                            color = if (amountError != null) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
+                    },
+                    isError = amountError != null,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                preview?.let {
+                    val summary = buildString {
+                        append("${it.fullyPaidCount} paid in full")
+                        if (it.partialCount > 0) append(" · ${it.partialCount} partial")
+                        if (it.unpaidCount > 0) append(" · ${it.unpaidCount} still unpaid")
+                    }
+                    Text(
+                        summary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { submit() }) {
+                val label = if (parsedAmount != null && parsedAmount < remainingTotal) {
+                    "Apply partial payment"
+                } else {
+                    "Mark all paid"
+                }
+                Text(label)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
 }

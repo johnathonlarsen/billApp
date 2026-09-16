@@ -49,7 +49,9 @@ data class BillDueInfo(
     val daysUntilDue: Long,
     val isOverdue: Boolean,
     val isPaidThisCycle: Boolean,
-    val cyclePayment: PaymentRecordEntity? = null
+    val cyclePayment: PaymentRecordEntity? = null,
+    val remainingCents: Long = 0,
+    val isPartialThisCycle: Boolean = false
 )
 
 object BillSchedule {
@@ -144,6 +146,22 @@ object BillSchedule {
     fun amountForCycle(bill: BillEntity, payment: PaymentRecordEntity?): Long =
         payment?.amountCents ?: bill.amountCents
 
+    fun paidAmountCents(payment: PaymentRecordEntity?): Long = payment?.amountCents ?: 0L
+
+    /** Amount still owed for this cycle. Overpayments count as fully covered. */
+    fun remainingCents(bill: BillEntity, payment: PaymentRecordEntity?): Long =
+        (bill.amountCents - paidAmountCents(payment)).coerceAtLeast(0L)
+
+    fun isFullyPaid(bill: BillEntity, payment: PaymentRecordEntity?): Boolean =
+        payment != null && remainingCents(bill, payment) == 0L
+
+    fun isPartiallyPaid(bill: BillEntity, payment: PaymentRecordEntity?): Boolean =
+        payment != null && remainingCents(bill, payment) > 0L
+
+    /** Reserved monthly amount: never below the bill template, higher if this cycle cost more. */
+    fun reservedAmountForCycle(bill: BillEntity, payment: PaymentRecordEntity?): Long =
+        maxOf(bill.amountCents, paidAmountCents(payment))
+
     fun isCycleSkipped(
         skips: List<com.family.bankapp.data.entity.BillCycleSkipEntity>,
         billId: Long,
@@ -210,7 +228,7 @@ object BillSchedule {
         payments: List<PaymentRecordEntity> = emptyList()
     ): Boolean {
         if (payments.isNotEmpty()) {
-            return paymentForCycle(payments, bill.id, dueDate) != null
+            return isFullyPaid(bill, paymentForCycle(payments, bill.id, dueDate))
         }
         val lastPaid = bill.lastPaidAt ?: return false
         val paidDate = Instant.ofEpochMilli(lastPaid).atZone(ZoneId.systemDefault()).toLocalDate()
@@ -234,14 +252,25 @@ object BillSchedule {
         val dueDate = nextDueDate(bill, today)
         val daysUntil = ChronoUnit.DAYS.between(today, dueDate)
         val cyclePayment = paymentForCycle(payments, bill.id, dueDate)
-        val paidThisCycle = cyclePayment != null || isPaidThisCycle(bill, dueDate, payments)
+        val paidThisCycle = if (payments.isNotEmpty() || cyclePayment != null) {
+            isFullyPaid(bill, cyclePayment)
+        } else {
+            isPaidThisCycle(bill, dueDate, payments)
+        }
+        val remaining = if (paidThisCycle && cyclePayment == null) {
+            0L
+        } else {
+            remainingCents(bill, cyclePayment)
+        }
         return BillDueInfo(
             bill = bill,
             dueDate = dueDate,
             daysUntilDue = daysUntil,
             isOverdue = daysUntil < 0 && !paidThisCycle,
             isPaidThisCycle = paidThisCycle,
-            cyclePayment = cyclePayment
+            cyclePayment = cyclePayment,
+            remainingCents = remaining,
+            isPartialThisCycle = isPartiallyPaid(bill, cyclePayment)
         )
     }
 
@@ -260,7 +289,7 @@ object BillSchedule {
         withinDays: Int,
         payments: List<PaymentRecordEntity> = emptyList()
     ): Long =
-        upcomingBills(bills, withinDays, payments).sumOf { it.bill.amountCents }
+        upcomingBills(bills, withinDays, payments).sumOf { it.remainingCents }
 
     fun accountCoverageWarning(
         account: AccountEntity,
@@ -271,7 +300,7 @@ object BillSchedule {
         val upcoming = upcomingBills(linkedBills, withinDays, payments)
             .filter { it.bill.linkedAccountId == account.id }
         if (upcoming.isEmpty()) return null
-        val needed = upcoming.sumOf { it.bill.amountCents }
+        val needed = upcoming.sumOf { it.remainingCents }
         val shortfall = needed - account.balanceCents
         return if (shortfall > 0) shortfall else null
     }

@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
@@ -196,9 +197,16 @@ private fun MonthDetailCard(
                             fontWeight = FontWeight.Medium
                         )
                     }
+                    if (overview.remainingDueCents > 0) {
+                        Text(
+                            "${MoneyFormatter.format(overview.remainingDueCents)} remaining",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
 
-                    val unpaidCount = overview.totalCount - overview.paidCount
-                    if (unpaidCount > 0 && onMarkAllPaid != null) {
+                    val outstandingCount = overview.outstandingBills.size
+                    if (outstandingCount > 0 && onMarkAllPaid != null) {
                         Button(
                             onClick = { onMarkAllPaid(overview) },
                             modifier = Modifier.fillMaxWidth()
@@ -208,7 +216,10 @@ private fun MonthDetailCard(
                                 contentDescription = null,
                                 modifier = Modifier.padding(end = 8.dp)
                             )
-                            Text("Mark all paid ($unpaidCount)")
+                            Text(
+                                "Pay remaining ($outstandingCount) · " +
+                                    MoneyFormatter.format(overview.remainingDueCents)
+                            )
                         }
                     }
 
@@ -224,7 +235,11 @@ private fun MonthDetailCard(
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(
-                                    imageVector = if (entry.isPaid) Icons.Default.Check else Icons.Default.Schedule,
+                                    imageVector = when {
+                                        entry.isPaid -> Icons.Default.Check
+                                        entry.isPartial -> Icons.Default.HourglassTop
+                                        else -> Icons.Default.Schedule
+                                    },
                                     contentDescription = null,
                                     tint = if (entry.isPaid) PillGreen else PillYellow
                                 )
@@ -238,17 +253,26 @@ private fun MonthDetailCard(
                                 }
                             }
                             Column(horizontalAlignment = Alignment.End) {
-                                val paidAmount = entry.payment?.amountCents ?: entry.bill.amountCents
+                                val displayAmount = when {
+                                    entry.isPaid -> entry.paidCents
+                                    entry.isPartial -> entry.remainingCents
+                                    else -> entry.bill.amountCents
+                                }
                                 Text(
-                                    MoneyFormatter.format(paidAmount),
+                                    MoneyFormatter.format(displayAmount),
                                     fontWeight = FontWeight.SemiBold
                                 )
-                                if (entry.isPaid &&
-                                    entry.payment != null &&
-                                    entry.payment.amountCents > entry.bill.amountCents
-                                ) {
+                                if (entry.isPaid && entry.paidCents > entry.bill.amountCents) {
                                     Text(
                                         "Usual ${MoneyFormatter.format(entry.bill.amountCents)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                if (entry.isPartial) {
+                                    Text(
+                                        "Paid ${MoneyFormatter.format(entry.paidCents)} of " +
+                                            MoneyFormatter.format(entry.bill.amountCents),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -278,7 +302,7 @@ private fun MonthDetailCard(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        if (onRemoveBillFromMonth != null) {
+                                        if (onRemoveBillFromMonth != null && !entry.isPartial) {
                                             IconButton(onClick = { onRemoveBillFromMonth(entry) }) {
                                                 Icon(
                                                     Icons.Default.Close,
@@ -286,13 +310,36 @@ private fun MonthDetailCard(
                                                 )
                                             }
                                         }
+                                        if (entry.isPartial && onEditBillPayment != null) {
+                                            OutlinedButton(
+                                                onClick = { onEditBillPayment(entry) },
+                                                modifier = Modifier.padding(top = 4.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Edit,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.padding(end = 4.dp)
+                                                )
+                                                Text("Edit", style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
                                         if (onMarkBillPaid != null) {
                                             Button(
                                                 onClick = { onMarkBillPaid(entry) },
                                                 modifier = Modifier.padding(top = 4.dp)
                                             ) {
-                                                Text("Mark paid", style = MaterialTheme.typography.labelSmall)
+                                                Text(
+                                                    if (entry.isPartial) "Pay rest" else "Mark paid",
+                                                    style = MaterialTheme.typography.labelSmall
+                                                )
                                             }
+                                        } else if (entry.isPartial) {
+                                            Text(
+                                                "Partial",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = PillYellow
+                                            )
                                         } else {
                                             Text(
                                                 "Unpaid",

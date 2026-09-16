@@ -84,8 +84,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             forecastDays = forecastDays,
             upcomingBills = upcoming,
             overdueBills = overdue,
-            upcomingTotalCents = upcoming.sumOf { it.dueInfo.bill.amountCents },
-            overdueTotalCents = overdue.sumOf { it.dueInfo.bill.amountCents },
+            upcomingTotalCents = upcoming.sumOf { it.dueInfo.remainingCents },
+            overdueTotalCents = overdue.sumOf { it.dueInfo.remainingCents },
             currentMonth = currentMonth,
             activeBillCount = bills.size,
             freeToSpend = freeToSpend

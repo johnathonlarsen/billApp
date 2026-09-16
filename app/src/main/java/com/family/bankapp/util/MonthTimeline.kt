@@ -19,7 +19,11 @@ data class MonthBillEntry(
     val dueDate: LocalDate,
     val isPaid: Boolean,
     val payment: PaymentRecordEntity?
-)
+) {
+    val paidCents: Long get() = payment?.amountCents ?: 0L
+    val remainingCents: Long get() = BillSchedule.remainingCents(bill, payment)
+    val isPartial: Boolean get() = BillSchedule.isPartiallyPaid(bill, payment)
+}
 
 data class MonthOverview(
     val yearMonth: YearMonth,
@@ -33,6 +37,8 @@ data class MonthOverview(
 ) {
     val label: String get() = yearMonth.format(DateTimeFormatter.ofPattern("MMM yy"))
     val fullLabel: String get() = yearMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
+    val remainingDueCents: Long get() = outstandingBills.sumOf { it.remainingCents }
+    val outstandingBills: List<MonthBillEntry> get() = bills.filter { !it.isPaid }
 }
 
 object MonthTimeline {
@@ -137,7 +143,7 @@ object MonthTimeline {
             MonthBillEntry(
                 bill = bill,
                 dueDate = dueDate,
-                isPaid = payment != null,
+                isPaid = BillSchedule.isFullyPaid(bill, payment),
                 payment = payment
             )
         }.sortedBy { it.dueDate }
@@ -158,7 +164,7 @@ object MonthTimeline {
             paidCount = paidCount,
             totalCount = totalCount,
             totalDueCents = entries.sumOf { it.bill.amountCents },
-            totalPaidCents = entries.filter { it.isPaid }.sumOf { it.payment!!.amountCents }
+            totalPaidCents = entries.sumOf { it.paidCents }
         )
     }
 
