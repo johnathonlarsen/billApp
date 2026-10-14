@@ -16,8 +16,8 @@ android {
         applicationId = "com.family.bankapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 52
-        versionName = "1.8.4"
+        versionCode = 53
+        versionName = "1.8.5"
     }
 
     signingConfigs {
@@ -87,7 +87,7 @@ afterEvaluate {
                   "apkUrl": "https://raw.githubusercontent.com/johnathonlarsen/billApp/main/docs/FamilyBank.apk",
                   "apkSizeBytes": $apkSizeBytes,
                   "releasedAt": "${Instant.now()}",
-                  "notes": "Check for updates reads every copy of the release file and keeps the newest, so a cached copy cannot hide an update. Transfers between Capital One accounts are not counted as spending."
+                  "notes": "Bill payments are no longer counted again as Plaid spending. Food and fuel purchases stay on the Food and Fuel bills you update yourself."
                 }
             """.trimIndent()
             docsDir.resolve("app-update.json").writeText(manifest)

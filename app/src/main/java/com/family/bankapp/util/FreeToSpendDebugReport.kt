@@ -99,6 +99,9 @@ object FreeToSpendDebugReport {
             transactions = overview.plaidTransactions,
             linkedTransactionIds = overview.linkedPlaidTransactionIds,
             accounts = overview.accounts,
+            bills = overview.bills,
+            payments = overview.payments,
+            skips = overview.billCycleSkips,
             yearMonth = currentMonth
         )
         appendLine()
@@ -327,6 +330,9 @@ object FreeToSpendDebugReport {
         transactions: List<PlaidTransactionEntity>,
         linkedTransactionIds: Set<String>,
         accounts: List<AccountEntity>,
+        bills: List<BillEntity>,
+        payments: List<PaymentRecordEntity>,
+        skips: List<BillCycleSkipEntity>,
         yearMonth: YearMonth
     ) {
         val spendingPlaidAccountIds = accounts.mapNotNull { account ->
@@ -341,9 +347,21 @@ object FreeToSpendDebugReport {
             account.plaidAccountId?.let { it to account.name }
         }.toMap()
 
+        val covered = BillCoveredSpending.covers(
+            transactions = transactions,
+            countedBills = FreeToSpendCalculator.billsReservedThisMonth(
+                bills, payments, skips, yearMonth
+            ),
+            spendingPlaidAccountIds = spendingPlaidAccountIds,
+            linkedTransactionIds = linkedTransactionIds,
+            yearMonth = yearMonth
+        )
+        val coveredIds = covered.map { it.transaction.plaidTransactionId }.toSet()
+        val spendingIds = linkedTransactionIds + coveredIds
+
         val merchantNets = PlaidMiscSpending.merchantNets(
             transactions = transactions,
-            linkedTransactionIds = linkedTransactionIds,
+            linkedTransactionIds = spendingIds,
             spendingPlaidAccountIds = spendingPlaidAccountIds,
             yearMonth = yearMonth
         )
@@ -353,7 +371,7 @@ object FreeToSpendDebugReport {
                 tx.amountCents > 0 &&
                 !tx.pending &&
                 !tx.excludeFromFreeToSpend &&
-                tx.plaidTransactionId !in linkedTransactionIds &&
+                tx.plaidTransactionId !in spendingIds &&
                 !PlaidMiscSpending.isInternalTransfer(PlaidMiscSpending.merchantKey(tx)) &&
                 runCatching { YearMonth.from(LocalDate.parse(tx.date)) }.getOrNull() == yearMonth
         }.sortedByDescending { it.date }
@@ -387,7 +405,9 @@ object FreeToSpendDebugReport {
             PlaidMiscSpending.isRolloverLenderName(net.label) && net.creditsOffsetCents > 0L
         }
 
-        if (misc.isEmpty() && excluded.isEmpty() && ignoredTransfers.isEmpty() && merchantNets.isEmpty()) {
+        if (misc.isEmpty() && excluded.isEmpty() && ignoredTransfers.isEmpty() &&
+            covered.isEmpty() && merchantNets.isEmpty()
+        ) {
             appendLine("(none)")
             return
         }
@@ -425,6 +445,22 @@ object FreeToSpendDebugReport {
             )
         } else if (merchantNets.isEmpty()) {
             appendLine("(no counted misc spending)")
+        }
+
+        if (covered.isNotEmpty()) {
+            appendLine()
+            appendLine("Already on a bill (not counted again as spending):")
+            covered.forEach { cover ->
+                val tx = cover.transaction
+                val accountName = accountNameByPlaidId[tx.plaidAccountId] ?: tx.plaidAccountId
+                appendLine(
+                    "- ${tx.date} | ${tx.name} | ${MoneyFormatter.format(tx.amountCents)} | " +
+                        "account: $accountName | ${cover.reason}"
+                )
+            }
+            appendLine(
+                "Total already on bills: ${MoneyFormatter.format(covered.sumOf { it.transaction.amountCents })}"
+            )
         }
 
         if (ignoredTransfers.isNotEmpty()) {

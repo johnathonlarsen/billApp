@@ -310,8 +310,9 @@ private fun FreeToSpendCard(
             )
             if (fts.plaidMiscSpentCents > 0) {
                 Text(
-                    "Spending = Plaid debits not linked to bills. Borrow-app repayments are netted " +
-                        "against re-borrow deposits (fees only). 360 transfers are ignored.",
+                    "Spending = other Plaid debits. Bill payments, and food or fuel purchases " +
+                        "covered by those bills, are not counted again. Borrow-app fees stay. " +
+                        "360 transfers are ignored.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

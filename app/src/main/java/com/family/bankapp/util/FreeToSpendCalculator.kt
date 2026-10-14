@@ -64,6 +64,9 @@ object FreeToSpendCalculator {
             transactions = plaidTransactions,
             linkedTransactionIds = linkedPlaidTransactionIds,
             accounts = accounts,
+            bills = bills,
+            payments = payments,
+            skips = skips,
             yearMonth = currentMonth
         )
         val priorOverdue = if (includePriorOverdue) {
@@ -108,35 +111,50 @@ object FreeToSpendCalculator {
                 .toLocalDate()
         )
 
+    fun billsReservedThisMonth(
+        bills: List<BillEntity>,
+        payments: List<PaymentRecordEntity>,
+        skips: List<BillCycleSkipEntity>,
+        yearMonth: YearMonth
+    ): List<BillEntity> = bills.filter { bill ->
+        if (!billTracksMonth(bill, yearMonth)) return@filter false
+        if (!MonthTimeline.billAppliesToMonth(bill, yearMonth)) return@filter false
+        val dueDate = BillSchedule.dueDateForYearMonth(bill, yearMonth)
+        !BillSchedule.isCycleSkipped(skips, bill.id, dueDate)
+    }
+
     private fun allBillsDueThisMonthCents(
         bills: List<BillEntity>,
         payments: List<PaymentRecordEntity>,
         skips: List<BillCycleSkipEntity>,
         yearMonth: YearMonth
-    ): Long {
-        var total = 0L
-        bills.forEach { bill ->
-            if (!billTracksMonth(bill, yearMonth)) return@forEach
-            if (!MonthTimeline.billAppliesToMonth(bill, yearMonth)) return@forEach
-            val dueDate = BillSchedule.dueDateForYearMonth(bill, yearMonth)
-            if (BillSchedule.isCycleSkipped(skips, bill.id, dueDate)) return@forEach
-            val payment = BillSchedule.paymentForCycle(payments, bill.id, dueDate)
-            total += BillSchedule.reservedAmountForCycle(bill, payment)
-        }
-        return total
+    ): Long = billsReservedThisMonth(bills, payments, skips, yearMonth).sumOf { bill ->
+        val dueDate = BillSchedule.dueDateForYearMonth(bill, yearMonth)
+        val payment = BillSchedule.paymentForCycle(payments, bill.id, dueDate)
+        BillSchedule.reservedAmountForCycle(bill, payment)
     }
 
     private fun miscPlaidSpentThisMonth(
         transactions: List<PlaidTransactionEntity>,
         linkedTransactionIds: Set<String>,
         accounts: List<AccountEntity>,
+        bills: List<BillEntity>,
+        payments: List<PaymentRecordEntity>,
+        skips: List<BillCycleSkipEntity>,
         yearMonth: YearMonth
     ): Long {
         val spendingPlaidAccountIds = spendingPlaidAccountIds(accounts)
         if (spendingPlaidAccountIds.isEmpty()) return 0L
+        val coveredIds = BillCoveredSpending.covers(
+            transactions = transactions,
+            countedBills = billsReservedThisMonth(bills, payments, skips, yearMonth),
+            spendingPlaidAccountIds = spendingPlaidAccountIds,
+            linkedTransactionIds = linkedTransactionIds,
+            yearMonth = yearMonth
+        ).map { it.transaction.plaidTransactionId }.toSet()
         return PlaidMiscSpending.miscSpentCents(
             transactions = transactions,
-            linkedTransactionIds = linkedTransactionIds,
+            linkedTransactionIds = linkedTransactionIds + coveredIds,
             spendingPlaidAccountIds = spendingPlaidAccountIds,
             yearMonth = yearMonth
         )
