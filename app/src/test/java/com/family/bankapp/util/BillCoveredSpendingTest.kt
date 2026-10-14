@@ -109,10 +109,12 @@ class BillCoveredSpendingTest {
             includePriorOverdue = false,
             today = LocalDate.of(2026, 10, 14)
         )
-        // Bills $480 + $330. Spending is only Venmo $3. Groceries and the electric payment are already on bills.
+        // Unpaid food $480 and electric $330 are still due. The bank is empty, so free to spend is that shortfall.
+        // Venmo is already reflected only if it had left a balance; it is not subtracted again.
         assertEquals(81_000L, snapshot.allBillsThisMonthCents)
+        assertEquals(81_000L, snapshot.remainingBillsThisMonthCents)
         assertEquals(300L, snapshot.plaidMiscSpentCents)
-        assertEquals(-81_300L, snapshot.freeToSpendCents)
+        assertEquals(-81_000L, snapshot.freeToSpendCents)
     }
 
     private fun bill(id: Long, name: String, amountCents: Long) = BillEntity(

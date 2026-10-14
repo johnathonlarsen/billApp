@@ -40,6 +40,7 @@ object FreeToSpendDebugReport {
         appendLine("freeToSpendCents: ${snapshot.freeToSpendCents}")
         appendLine("monthlyIncomeCents: ${snapshot.monthlyIncomeCents}")
         appendLine("allBillsThisMonthCents: ${snapshot.allBillsThisMonthCents}")
+        appendLine("remainingBillsThisMonthCents: ${snapshot.remainingBillsThisMonthCents}")
         appendLine("plaidMiscSpentCents: ${snapshot.plaidMiscSpentCents}")
         appendLine("priorOverdueUnpaidCents: ${snapshot.priorOverdueUnpaidCents}")
         appendLine("includePriorOverdue: ${snapshot.includePriorOverdue}")
@@ -118,16 +119,22 @@ object FreeToSpendDebugReport {
     }.trimEnd()
 
     private fun StringBuilder.appendFormulaBreakdown(snapshot: FreeToSpendSnapshot) {
-        appendLine("Income:              ${MoneyFormatter.format(snapshot.monthlyIncomeCents)}")
-        appendLine("  - bills:           ${MoneyFormatter.format(snapshot.allBillsThisMonthCents)}")
-        appendLine("  - spending (Plaid): ${MoneyFormatter.format(snapshot.plaidMiscSpentCents)}")
+        appendLine("Bank balance:        ${MoneyFormatter.format(snapshot.liquidBalanceCents)}")
+        appendLine("  - still due:       ${MoneyFormatter.format(snapshot.remainingBillsThisMonthCents)}")
         appendLine("  - prior overdue:   ${MoneyFormatter.format(snapshot.priorOverdueUnpaidCents)}")
         appendLine("= ${MoneyFormatter.format(snapshot.freeToSpendCents)} free to spend")
         appendLine(
-            "Compact: Income ${MoneyFormatter.format(snapshot.monthlyIncomeCents)}" +
-                " - bills ${MoneyFormatter.format(snapshot.allBillsThisMonthCents)}" +
-                " - spending ${MoneyFormatter.format(snapshot.plaidMiscSpentCents)}" +
+            "Compact: Bank ${MoneyFormatter.format(snapshot.liquidBalanceCents)}" +
+                " - still due ${MoneyFormatter.format(snapshot.remainingBillsThisMonthCents)}" +
                 " - prior ${MoneyFormatter.format(snapshot.priorOverdueUnpaidCents)}"
+        )
+        appendLine(
+            "Paid bills are already out of the bank. Income and Plaid spending are not added again."
+        )
+        appendLine(
+            "Reference plan: income ${MoneyFormatter.format(snapshot.monthlyIncomeCents)}" +
+                " - all bills ${MoneyFormatter.format(snapshot.allBillsThisMonthCents)}" +
+                " - spending ${MoneyFormatter.format(snapshot.plaidMiscSpentCents)}"
         )
     }
 

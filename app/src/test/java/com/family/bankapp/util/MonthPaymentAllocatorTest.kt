@@ -1,8 +1,10 @@
 package com.family.bankapp.util
 
+import com.family.bankapp.data.entity.AccountEntity
 import com.family.bankapp.data.entity.BillEntity
 import com.family.bankapp.data.entity.IncomeEntity
 import com.family.bankapp.data.entity.PaymentRecordEntity
+import com.family.bankapp.data.model.AccountType
 import com.family.bankapp.data.model.BillCategory
 import com.family.bankapp.data.model.BillRecurrence
 import java.time.LocalDate
@@ -130,7 +132,45 @@ class MonthPaymentAllocatorTest {
     }
 
     @Test
-    fun freeToSpend_partialStillReservesUsualBillAmount() {
+    fun freeToSpend_isBankBalanceMinusBillsStillOwed() {
+        val food = bill(1, "Food", 48_000, dueDay = 1)
+        val fuel = bill(2, "Fuel", 12_000, dueDay = 1)
+        val geico = bill(3, "Geico", 6_000, dueDay = 1)
+        val october = YearMonth.of(2026, 10)
+        val snapshot = FreeToSpendCalculator.calculate(
+            accounts = listOf(
+                checking(1, "360 Checking ···4440", 38_381),
+                checking(2, "360 Checking ···7098", 4_754),
+                AccountEntity(
+                    id = 3,
+                    bankId = 1,
+                    name = "360 Money Market",
+                    accountType = AccountType.SAVINGS,
+                    balanceCents = 8,
+                    includeInFreeToSpend = true
+                )
+            ),
+            bills = listOf(food, fuel, geico),
+            incomes = listOf(IncomeEntity(name = "Paycheck", amountCents = 150_000, dueDayOfMonth = 1)),
+            payments = listOf(
+                payment(food.id, 24_000, BillSchedule.dueDateForYearMonth(food, october)),
+                payment(fuel.id, 6_000, BillSchedule.dueDateForYearMonth(fuel, october)),
+                payment(geico.id, 6_000, BillSchedule.dueDateForYearMonth(geico, october))
+            ),
+            skips = emptyList(),
+            plaidTransactions = emptyList(),
+            linkedPlaidTransactionIds = emptySet(),
+            includePriorOverdue = false,
+            today = LocalDate.of(2026, 10, 14)
+        )
+
+        assertEquals(43_143L, snapshot.liquidBalanceCents)
+        assertEquals(30_000L, snapshot.remainingBillsThisMonthCents)
+        assertEquals(13_143L, snapshot.freeToSpendCents)
+    }
+
+    @Test
+    fun freeToSpend_partialLeavesOnlyTheUnpaidRemainder() {
         val rent = bill(1, "Rent", 100_000, dueDay = 1)
         val rentDue = BillSchedule.dueDateForYearMonth(rent, september)
         val snapshot = FreeToSpendCalculator.calculate(
@@ -148,7 +188,8 @@ class MonthPaymentAllocatorTest {
         )
 
         assertEquals(100_000L, snapshot.allBillsThisMonthCents)
-        assertEquals(300_000L, snapshot.freeToSpendCents)
+        assertEquals(60_000L, snapshot.remainingBillsThisMonthCents)
+        assertEquals(-60_000L, snapshot.freeToSpendCents)
     }
 
     @Test
@@ -176,6 +217,14 @@ class MonthPaymentAllocatorTest {
             payment = null
         )
     }
+
+    private fun checking(id: Long, name: String, balanceCents: Long) = AccountEntity(
+        id = id,
+        bankId = 1,
+        name = name,
+        accountType = AccountType.CHECKING,
+        balanceCents = balanceCents
+    )
 
     private fun bill(
         id: Long,

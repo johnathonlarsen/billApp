@@ -288,45 +288,26 @@ private fun FreeToSpendCard(
             )
             Text(
                 if (isShort) {
-                    "${MoneyFormatter.format(-fts.freeToSpendCents)} over your ${fts.currentMonthLabel} budget"
+                    "${MoneyFormatter.format(-fts.freeToSpendCents)} short of bills still due"
                 } else {
-                    "Left from ${fts.currentMonthLabel} income after this month's bills & spending"
+                    "In your accounts after bills still to pay"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
                 buildString {
-                    append("Income ${MoneyFormatter.format(fts.monthlyIncomeCents)}")
-                    append(" − bills ${MoneyFormatter.format(fts.allBillsThisMonthCents)}")
-                    if (fts.plaidMiscSpentCents > 0) {
-                        append(" − spending ${MoneyFormatter.format(fts.plaidMiscSpentCents)}")
-                    }
+                    append("Bank ${MoneyFormatter.format(fts.liquidBalanceCents)}")
+                    append(" − still due ${MoneyFormatter.format(fts.remainingBillsThisMonthCents)}")
                     if (fts.priorOverdueUnpaidCents > 0) {
                         append(" − prior ${MoneyFormatter.format(fts.priorOverdueUnpaidCents)}")
                     }
                 },
                 style = MaterialTheme.typography.bodySmall
             )
-            if (fts.plaidMiscSpentCents > 0) {
-                Text(
-                    "Spending = other Plaid debits. Bill payments, and food or fuel purchases " +
-                        "covered by those bills, are not counted again. Borrow-app fees stay. " +
-                        "360 transfers are ignored.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
             if (fts.priorOverdueUnpaidCents > 0 && fts.includePriorOverdue) {
                 Text(
                     "Prior unpaid bills count from when each bill was added — mark paid or turn off in Settings.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            if (fts.liquidBalanceCents > 0) {
-                Text(
-                    "Account balance (reference): ${MoneyFormatter.format(fts.liquidBalanceCents)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

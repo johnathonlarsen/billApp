@@ -27,8 +27,10 @@ object RecurrenceNormalizer {
 
 data class FreeToSpendSnapshot(
     val monthlyIncomeCents: Long,
-    /** Total of all bills due this month — reserved from income whether paid yet or not. */
+    /** Total of all bills due this month, paid or not. */
     val allBillsThisMonthCents: Long,
+    /** Unpaid portion of this month's bills. Paid bills are already out of the bank. */
+    val remainingBillsThisMonthCents: Long,
     /** Plaid debits this month not linked to a bill, net of borrow-app re-borrow deposits. */
     val plaidMiscSpentCents: Long,
     val priorOverdueUnpaidCents: Long,
@@ -59,7 +61,17 @@ object FreeToSpendCalculator {
         val liquidBalance = freeToSpendBalance(accounts)
 
         val currentMonth = YearMonth.from(today)
-        val allBillsThisMonth = allBillsDueThisMonthCents(bills, payments, skips, currentMonth)
+        val reservedBills = billsReservedThisMonth(bills, payments, skips, currentMonth)
+        val allBillsThisMonth = reservedBills.sumOf { bill ->
+            val dueDate = BillSchedule.dueDateForYearMonth(bill, currentMonth)
+            val payment = BillSchedule.paymentForCycle(payments, bill.id, dueDate)
+            BillSchedule.reservedAmountForCycle(bill, payment)
+        }
+        val remainingBills = reservedBills.sumOf { bill ->
+            val dueDate = BillSchedule.dueDateForYearMonth(bill, currentMonth)
+            val payment = BillSchedule.paymentForCycle(payments, bill.id, dueDate)
+            BillSchedule.remainingCents(bill, payment)
+        }
         val plaidMisc = miscPlaidSpentThisMonth(
             transactions = plaidTransactions,
             linkedTransactionIds = linkedPlaidTransactionIds,
@@ -75,14 +87,12 @@ object FreeToSpendCalculator {
             0L
         }
 
-        val freeToSpend = monthlyIncome -
-            allBillsThisMonth -
-            plaidMisc -
-            priorOverdue
+        val freeToSpend = liquidBalance - remainingBills - priorOverdue
 
         return FreeToSpendSnapshot(
             monthlyIncomeCents = monthlyIncome,
             allBillsThisMonthCents = allBillsThisMonth,
+            remainingBillsThisMonthCents = remainingBills,
             plaidMiscSpentCents = plaidMisc,
             priorOverdueUnpaidCents = priorOverdue,
             freeToSpendCents = freeToSpend,
@@ -121,17 +131,6 @@ object FreeToSpendCalculator {
         if (!MonthTimeline.billAppliesToMonth(bill, yearMonth)) return@filter false
         val dueDate = BillSchedule.dueDateForYearMonth(bill, yearMonth)
         !BillSchedule.isCycleSkipped(skips, bill.id, dueDate)
-    }
-
-    private fun allBillsDueThisMonthCents(
-        bills: List<BillEntity>,
-        payments: List<PaymentRecordEntity>,
-        skips: List<BillCycleSkipEntity>,
-        yearMonth: YearMonth
-    ): Long = billsReservedThisMonth(bills, payments, skips, yearMonth).sumOf { bill ->
-        val dueDate = BillSchedule.dueDateForYearMonth(bill, yearMonth)
-        val payment = BillSchedule.paymentForCycle(payments, bill.id, dueDate)
-        BillSchedule.reservedAmountForCycle(bill, payment)
     }
 
     private fun miscPlaidSpentThisMonth(
