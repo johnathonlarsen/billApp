@@ -10,20 +10,29 @@ import java.net.URL
 object AppUpdateClient {
 
     private val manifestUrls = listOf(
+        FamilyAppConfig.UPDATE_MANIFEST_API_URL,
         FamilyAppConfig.UPDATE_MANIFEST_RAW_URL,
         FamilyAppConfig.UPDATE_MANIFEST_URL
     )
 
+    /** Highest versionCode wins so one stale CDN copy cannot hide a newer release. */
+    fun newestManifest(manifests: List<AppUpdateManifest>): AppUpdateManifest? =
+        manifests.maxByOrNull { it.versionCode }
+
     suspend fun fetchManifest(): Result<AppUpdateManifest> = withContext(Dispatchers.IO) {
+        val found = mutableListOf<AppUpdateManifest>()
         var lastError: Throwable? = null
         for (baseUrl in manifestUrls) {
             val result = runCatching { fetchManifestFromUrl(baseUrl) }
-            if (result.isSuccess) {
-                return@withContext result
-            }
-            lastError = result.exceptionOrNull()
+            result.onSuccess { found += it }
+            result.onFailure { lastError = it }
         }
-        Result.failure(lastError ?: IllegalStateException("Could not check for updates"))
+        val newest = newestManifest(found)
+        if (newest != null) {
+            Result.success(newest)
+        } else {
+            Result.failure(lastError ?: IllegalStateException("Could not check for updates"))
+        }
     }
 
     private fun fetchManifestFromUrl(baseUrl: String): AppUpdateManifest {
@@ -38,8 +47,12 @@ object AppUpdateClient {
             readTimeout = 15_000
             instanceFollowRedirects = true
             useCaches = false
+            setRequestProperty("User-Agent", "FamilyBank")
             setRequestProperty("Cache-Control", "no-cache, no-store")
             setRequestProperty("Pragma", "no-cache")
+            if (baseUrl.contains("api.github.com")) {
+                setRequestProperty("Accept", "application/vnd.github.raw")
+            }
         }
         try {
             val code = conn.responseCode

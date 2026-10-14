@@ -19,7 +19,7 @@ import java.io.File
 sealed class AppUpdateUiState {
     data object Idle : AppUpdateUiState()
     data object Checking : AppUpdateUiState()
-    data object UpToDate : AppUpdateUiState()
+    data class UpToDate(val manifest: AppUpdateManifest) : AppUpdateUiState()
     data class Available(val manifest: AppUpdateManifest) : AppUpdateUiState()
     data class Downloading(val progress: AppDownloadProgress) : AppUpdateUiState()
     data class ReadyToInstall(
@@ -81,7 +81,7 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
                             )
                         } ?: AppUpdateUiState.Available(manifest)
                     } else {
-                        AppUpdateUiState.UpToDate
+                        AppUpdateUiState.UpToDate(manifest)
                     }
                 }
                 .onFailure { e ->

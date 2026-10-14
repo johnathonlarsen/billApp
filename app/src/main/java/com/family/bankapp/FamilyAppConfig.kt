@@ -41,8 +41,12 @@ object FamilyAppConfig {
     const val PRIVACY_POLICY_URL = "https://johnathonlarsen.github.io/billApp/privacy-policy.html"
 
     /**
-     * Update manifest — raw GitHub updates immediately on push; GitHub Pages can lag behind.
+     * Update manifests. GitHub's raw and Pages CDNs can keep an old file for several minutes
+     * and ignore query-string cache busters, so the checker reads every URL and keeps the newest.
+     * The contents API cache is much shorter than raw/Pages.
      */
+    const val UPDATE_MANIFEST_API_URL =
+        "https://api.github.com/repos/johnathonlarsen/billApp/contents/docs/app-update.json"
     const val UPDATE_MANIFEST_RAW_URL =
         "https://raw.githubusercontent.com/johnathonlarsen/billApp/main/docs/app-update.json"
     const val UPDATE_MANIFEST_URL = "https://johnathonlarsen.github.io/billApp/app-update.json"

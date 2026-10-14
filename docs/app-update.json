@@ -1,8 +1,8 @@
 {
-  "versionCode": 51,
-  "versionName": "1.8.3",
+  "versionCode": 52,
+  "versionName": "1.8.4",
   "apkUrl": "https://raw.githubusercontent.com/johnathonlarsen/billApp/main/docs/FamilyBank.apk",
   "apkSizeBytes": 16400633,
-  "releasedAt": "2026-10-14T14:08:29.676277893Z",
-  "notes": "Transfers between your Capital One accounts are no longer counted as spending. Free-to-spend debug now lists previous, current, and next month bills with paid and pending amounts."
+  "releasedAt": "2026-10-14T14:21:18.722096855Z",
+  "notes": "Check for updates reads every copy of the release file and keeps the newest, so a cached copy cannot hide an update. Transfers between Capital One accounts are not counted as spending."
 }

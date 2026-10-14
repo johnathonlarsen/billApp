@@ -33,7 +33,7 @@ fun AppUpdateSettingsCard(vm: AppUpdateViewModel) {
         ) {
             Text("App updates", fontWeight = FontWeight.Bold)
             Text(
-                "Installed: Family Bank ${vm.currentVersionName}",
+                "Installed: Family Bank ${vm.currentVersionName} (build ${vm.currentVersionCode})",
                 style = MaterialTheme.typography.bodySmall
             )
 
@@ -107,7 +107,7 @@ fun AppUpdateSettingsCard(vm: AppUpdateViewModel) {
 
                 is AppUpdateUiState.UpToDate -> {
                     Text(
-                        "You're on the latest version.",
+                        "You're on the latest version. Server has ${s.manifest.versionName} (build ${s.manifest.versionCode}).",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )
