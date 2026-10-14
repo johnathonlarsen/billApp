@@ -10,7 +10,9 @@ import java.time.YearMonth
  * - Normal purchases: debit totals only.
  * - Cash-advance / borrow apps: net repayments (debits) against re-borrow deposits
  *   (credits) from the prior month and current month — only fees stay counted.
- * - Internal 360 transfers: ignored (not spending).
+ * - Moves between your own Capital One 360 accounts ("Withdrawal to 360 …"): ignored.
+ *   Plaid often puts that text on the transaction name while the merchant is the bank,
+ *   so both fields are checked.
  */
 object PlaidMiscSpending {
 
@@ -36,7 +38,8 @@ object PlaidMiscSpending {
     )
 
     fun merchantKey(tx: PlaidTransactionEntity): String {
-        val raw = (tx.merchantName?.takeIf { it.isNotBlank() } ?: tx.name).uppercase()
+        if (isOwnCapOneTransfer(tx)) return "internal_transfer_360"
+        val raw = primaryLabel(tx).uppercase()
         return when {
             raw.contains("EARNIN") -> "earnin"
             raw.contains("TILT") -> "tilt"
@@ -51,12 +54,29 @@ object PlaidMiscSpending {
             raw.contains("FLOATME") -> "floatme"
             raw.contains("VOLA") -> "vola"
             raw.contains("INSTACASH") -> "instacash"
-            raw.contains("WITHDRAWAL TO 360") -> "internal_transfer_360"
             else -> raw.lowercase().trim()
         }
     }
 
     fun isInternalTransfer(key: String): Boolean = key == "internal_transfer_360"
+
+    /**
+     * True when the transaction is money moved to or from another Capital One 360 account.
+     * Matches either the bank description or the merchant, e.g. name
+     * "Withdrawal to 360 Checking ***********" with merchant "Capital One".
+     */
+    fun isOwnCapOneTransfer(tx: PlaidTransactionEntity): Boolean {
+        val raw = listOfNotNull(tx.name, tx.merchantName?.takeIf { it.isNotBlank() })
+            .joinToString(" ")
+            .uppercase()
+        return raw.contains("WITHDRAWAL TO 360") ||
+            raw.contains("WITHDRAWAL FROM 360") ||
+            raw.contains("TRANSFER TO 360") ||
+            raw.contains("TRANSFER FROM 360")
+    }
+
+    private fun primaryLabel(tx: PlaidTransactionEntity): String =
+        tx.merchantName?.takeIf { it.isNotBlank() } ?: tx.name
 
     fun isRolloverLender(key: String): Boolean = key in ROLLOVER_LENDER_KEYS
 

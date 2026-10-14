@@ -16,8 +16,8 @@ android {
         applicationId = "com.family.bankapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 50
-        versionName = "1.8.2"
+        versionCode = 51
+        versionName = "1.8.3"
     }
 
     signingConfigs {
@@ -87,7 +87,7 @@ afterEvaluate {
                   "apkUrl": "https://raw.githubusercontent.com/johnathonlarsen/billApp/main/docs/FamilyBank.apk",
                   "apkSizeBytes": $apkSizeBytes,
                   "releasedAt": "${Instant.now()}",
-                  "notes": "Pay remaining month totals or individual bills at a lower amount. Partial payments stay outstanding until the usual total is covered. If install fails with a package conflict, uninstall the old app once, then install again. Future updates will install in place."
+                  "notes": "Transfers between your Capital One accounts are no longer counted as spending. Free-to-spend debug now lists previous, current, and next month bills with paid and pending amounts."
                 }
             """.trimIndent()
             docsDir.resolve("app-update.json").writeText(manifest)

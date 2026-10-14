@@ -30,6 +30,61 @@ class PlaidMiscSpendingTest {
     }
 
     @Test
+    fun capOneTransfer_ignoredWhenBankIsMerchantAndNameIsWithdrawal() {
+        val transactions = listOf(
+            tx(
+                id = "xfer-7098",
+                date = "2026-10-05",
+                amountCents = 24_500,
+                name = "Withdrawal to 360 Checking ***********",
+                merchantName = "Capital One"
+            ),
+            tx(
+                id = "coke",
+                date = "2026-10-10",
+                amountCents = 285,
+                name = "COCA COLA HATTIESBURG M",
+                merchantName = "Coca-Cola"
+            )
+        )
+
+        val misc = PlaidMiscSpending.miscSpentCents(
+            transactions = transactions,
+            linkedTransactionIds = emptySet(),
+            spendingPlaidAccountIds = setOf(accountId),
+            yearMonth = YearMonth.of(2026, 10)
+        )
+
+        assertEquals(285L, misc)
+        assertEquals(
+            "internal_transfer_360",
+            PlaidMiscSpending.merchantKey(transactions.first())
+        )
+    }
+
+    @Test
+    fun atmWithdrawal_stillCountsAsSpending() {
+        val transactions = listOf(
+            tx(
+                id = "atm",
+                date = "2026-08-02",
+                amountCents = 4_000,
+                name = "ATM WITHDRAWAL",
+                merchantName = "Capital One"
+            )
+        )
+
+        val misc = PlaidMiscSpending.miscSpentCents(
+            transactions = transactions,
+            linkedTransactionIds = emptySet(),
+            spendingPlaidAccountIds = setOf(accountId),
+            yearMonth = august
+        )
+
+        assertEquals(4_000L, misc)
+    }
+
+    @Test
     fun internalTransfer_ignored() {
         val transactions = listOf(
             tx("xfer-out", "2026-08-15", 5_000, "Withdrawal to 360 Money Market ***********"),
@@ -87,13 +142,15 @@ class PlaidMiscSpendingTest {
         id: String,
         date: String,
         amountCents: Long,
-        name: String
+        name: String,
+        merchantName: String? = null
     ) = PlaidTransactionEntity(
         plaidTransactionId = id,
         bankId = bankId,
         plaidAccountId = accountId,
         amountCents = amountCents,
         date = date,
-        name = name
+        name = name,
+        merchantName = merchantName
     )
 }

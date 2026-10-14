@@ -72,6 +72,16 @@ object FreeToSpendDebugReport {
         )
         appendLine()
 
+        appendLine("=== Bill status (previous, current, next) ===")
+        appendNearbyMonthBillStatus(
+            bills = overview.bills,
+            payments = overview.payments,
+            skips = overview.billCycleSkips,
+            currentMonth = currentMonth,
+            today = today
+        )
+        appendLine()
+
         if (snapshot.includePriorOverdue) {
             appendLine("=== Prior unpaid bills ===")
             appendPriorUnpaidBills(
@@ -146,6 +156,131 @@ object FreeToSpendDebugReport {
             )
         }
         if (!any) appendLine("(none)")
+    }
+
+    private fun StringBuilder.appendNearbyMonthBillStatus(
+        bills: List<BillEntity>,
+        payments: List<PaymentRecordEntity>,
+        skips: List<BillCycleSkipEntity>,
+        currentMonth: YearMonth,
+        today: LocalDate
+    ) {
+        val months = listOf(
+            currentMonth.minusMonths(1) to "previous",
+            currentMonth to "current",
+            currentMonth.plusMonths(1) to "next"
+        )
+        months.forEachIndexed { index, (month, role) ->
+            if (index > 0) appendLine()
+            appendLine("--- ${month.format(monthFormatter)} ($role) ---")
+            appendMonthBillStatus(
+                bills = bills,
+                payments = payments,
+                skips = skips,
+                yearMonth = month,
+                currentMonth = currentMonth,
+                today = today
+            )
+        }
+    }
+
+    private fun StringBuilder.appendMonthBillStatus(
+        bills: List<BillEntity>,
+        payments: List<PaymentRecordEntity>,
+        skips: List<BillCycleSkipEntity>,
+        yearMonth: YearMonth,
+        currentMonth: YearMonth,
+        today: LocalDate
+    ) {
+        val applicable = bills.mapNotNull { bill ->
+            if (!MonthTimeline.billAppliesToMonth(bill, yearMonth)) return@mapNotNull null
+            bill to BillSchedule.dueDateForYearMonth(bill, yearMonth)
+        }.sortedWith(compareBy({ it.second }, { it.first.name }))
+
+        if (applicable.isEmpty()) {
+            appendLine("(none)")
+            return
+        }
+
+        var billTotal = 0L
+        var paidTotal = 0L
+        var remainingTotal = 0L
+        var paidCount = 0
+        var pendingCount = 0
+        var partialCount = 0
+        var skippedCount = 0
+
+        applicable.forEach { (bill, dueDate) ->
+            val skipped = BillSchedule.isCycleSkipped(skips, bill.id, dueDate)
+            val payment = if (skipped) null else BillSchedule.paymentForCycle(payments, bill.id, dueDate)
+            val status = when {
+                skipped -> "SKIPPED"
+                BillSchedule.isFullyPaid(bill, payment) -> "PAID"
+                BillSchedule.isPartiallyPaid(bill, payment) -> "PARTIAL"
+                else -> "PENDING"
+            }
+            val paid = if (skipped) 0L else BillSchedule.paidAmountCents(payment)
+            val remaining = if (skipped) 0L else BillSchedule.remainingCents(bill, payment)
+            if (skipped) {
+                skippedCount++
+            } else {
+                billTotal += bill.amountCents
+                paidTotal += paid
+                remainingTotal += remaining
+                when (status) {
+                    "PAID" -> paidCount++
+                    "PARTIAL" -> partialCount++
+                    else -> pendingCount++
+                }
+            }
+            appendLine(
+                "- ${bill.name} | ${bill.category.label} | ${bill.recurrence.label} | " +
+                    "due ${dueDate.format(dateFormatter)} | $status | " +
+                    "bill ${MoneyFormatter.format(bill.amountCents)} | " +
+                    "paid ${MoneyFormatter.format(paid)} | " +
+                    "remaining ${MoneyFormatter.format(remaining)} | " +
+                    billCountNote(
+                        bill = bill,
+                        yearMonth = yearMonth,
+                        currentMonth = currentMonth,
+                        today = today,
+                        dueDate = dueDate,
+                        skipped = skipped,
+                        remaining = remaining
+                    )
+            )
+        }
+
+        val skippedSuffix = if (skippedCount > 0) ", $skippedCount skipped" else ""
+        appendLine(
+            "Month totals: bill ${MoneyFormatter.format(billTotal)} | " +
+                "paid ${MoneyFormatter.format(paidTotal)} | " +
+                "remaining ${MoneyFormatter.format(remainingTotal)} | " +
+                "$paidCount paid, $pendingCount pending, $partialCount partial$skippedSuffix"
+        )
+    }
+
+    private fun billCountNote(
+        bill: BillEntity,
+        yearMonth: YearMonth,
+        currentMonth: YearMonth,
+        today: LocalDate,
+        dueDate: LocalDate,
+        skipped: Boolean,
+        remaining: Long
+    ): String {
+        if (skipped) return "skipped, not counted"
+        if (!billTracksMonth(bill, yearMonth)) return "before tracking start, not counted"
+        return when {
+            yearMonth == currentMonth -> "counts toward free to spend"
+            yearMonth.isBefore(currentMonth) -> {
+                val countsPrior = bill.category != BillCategory.OTHER &&
+                    remaining > 0L &&
+                    dueDate.isBefore(today)
+                if (countsPrior) "counts toward prior overdue" else "does not count toward prior overdue"
+            }
+            else -> "upcoming, not in this month's free to spend"
+        }
     }
 
     private fun StringBuilder.appendPriorUnpaidBills(
@@ -223,20 +358,36 @@ object FreeToSpendDebugReport {
                 runCatching { YearMonth.from(LocalDate.parse(tx.date)) }.getOrNull() == yearMonth
         }.sortedByDescending { it.date }
 
+        val inMonth: (PlaidTransactionEntity) -> Boolean = { tx ->
+            runCatching { YearMonth.from(LocalDate.parse(tx.date)) }.getOrNull() == yearMonth
+        }
+        val isTransfer: (PlaidTransactionEntity) -> Boolean = { tx ->
+            PlaidMiscSpending.isInternalTransfer(PlaidMiscSpending.merchantKey(tx))
+        }
+
+        val ignoredTransfers = transactions.filter { tx ->
+            tx.plaidAccountId in spendingPlaidAccountIds &&
+                tx.amountCents > 0 &&
+                !tx.pending &&
+                isTransfer(tx) &&
+                inMonth(tx)
+        }.sortedByDescending { it.date }
+
         val excluded = transactions.filter { tx ->
             tx.plaidAccountId in spendingPlaidAccountIds &&
                 tx.amountCents > 0 &&
                 !tx.pending &&
                 tx.excludeFromFreeToSpend &&
                 tx.plaidTransactionId !in linkedTransactionIds &&
-                runCatching { YearMonth.from(LocalDate.parse(tx.date)) }.getOrNull() == yearMonth
+                !isTransfer(tx) &&
+                inMonth(tx)
         }.sortedByDescending { it.date }
 
         val rolloverNets = merchantNets.filter { net ->
             PlaidMiscSpending.isRolloverLenderName(net.label) && net.creditsOffsetCents > 0L
         }
 
-        if (misc.isEmpty() && excluded.isEmpty() && merchantNets.isEmpty()) {
+        if (misc.isEmpty() && excluded.isEmpty() && ignoredTransfers.isEmpty() && merchantNets.isEmpty()) {
             appendLine("(none)")
             return
         }
@@ -258,7 +409,6 @@ object FreeToSpendDebugReport {
                 val accountName = accountNameByPlaidId[tx.plaidAccountId] ?: tx.plaidAccountId
                 val key = PlaidMiscSpending.merchantKey(tx)
                 val note = when {
-                    PlaidMiscSpending.isInternalTransfer(key) -> " | internal transfer (ignored)"
                     PlaidMiscSpending.isRolloverLender(key) -> {
                         val net = merchantNets.find { it.label.equals(tx.name, true) || it.label == (tx.merchantName ?: tx.name) }
                         if (net != null && net.creditsOffsetCents > 0) " | see netting above" else ""
@@ -266,14 +416,30 @@ object FreeToSpendDebugReport {
                     else -> ""
                 }
                 appendLine(
-                    "- ${tx.date} | ${tx.name} | ${MoneyFormatter.format(tx.amountCents)} | account: $accountName$note"
+                    "- ${tx.date} | ${tx.name} | ${MoneyFormatter.format(tx.amountCents)} | account: $accountName" +
+                        merchantSuffix(tx) + note
                 )
             }
             appendLine(
                 "Total misc spending (net): ${MoneyFormatter.format(merchantNets.sumOf { it.countedCents })}"
             )
-        } else {
+        } else if (merchantNets.isEmpty()) {
             appendLine("(no counted misc spending)")
+        }
+
+        if (ignoredTransfers.isNotEmpty()) {
+            appendLine()
+            appendLine("Ignored transfers between your Capital One accounts (not counted):")
+            ignoredTransfers.forEach { tx ->
+                val accountName = accountNameByPlaidId[tx.plaidAccountId] ?: tx.plaidAccountId
+                appendLine(
+                    "- ${tx.date} | ${tx.name} | ${MoneyFormatter.format(tx.amountCents)} | account: $accountName" +
+                        merchantSuffix(tx)
+                )
+            }
+            appendLine(
+                "Total ignored transfers: ${MoneyFormatter.format(ignoredTransfers.sumOf { it.amountCents })}"
+            )
         }
 
         if (excluded.isNotEmpty()) {
@@ -282,7 +448,8 @@ object FreeToSpendDebugReport {
             excluded.forEach { tx ->
                 val accountName = accountNameByPlaidId[tx.plaidAccountId] ?: tx.plaidAccountId
                 appendLine(
-                    "- ${tx.date} | ${tx.name} | ${MoneyFormatter.format(tx.amountCents)} | account: $accountName"
+                    "- ${tx.date} | ${tx.name} | ${MoneyFormatter.format(tx.amountCents)} | account: $accountName" +
+                        merchantSuffix(tx)
                 )
             }
             appendLine(
@@ -313,6 +480,12 @@ object FreeToSpendDebugReport {
                     if (included) "included" else "excluded"
             )
         }
+    }
+
+    private fun merchantSuffix(tx: PlaidTransactionEntity): String {
+        val merchant = tx.merchantName?.takeIf { it.isNotBlank() && !it.equals(tx.name, ignoreCase = true) }
+            ?: return ""
+        return " | merchant: $merchant"
     }
 
     private fun billTracksMonth(bill: BillEntity, yearMonth: YearMonth): Boolean =
