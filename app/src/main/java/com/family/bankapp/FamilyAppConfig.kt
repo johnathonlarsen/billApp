@@ -9,8 +9,12 @@ object FamilyAppConfig {
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmcGFoZmhyY2xvam1iZnZ3YXNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwOTc5MDksImV4cCI6MjA5NTY3MzkwOX0.wd5vRaw2y-2AfqWnPPSyqAswz9ofP6xdWFdENlMOTt0"
     const val SUPABASE_TEAM_ID = "family-bank"
 
-    /** Must match Supabase secret FAMILY_APP_API_SECRET (Edge Function auth). */
-    const val EDGE_FUNCTION_SECRET = "familybank-edge"
+    /**
+     * Must match Supabase secret FAMILY_APP_API_SECRET (Edge Function auth).
+     * Rotate together: `supabase secrets set FAMILY_APP_API_SECRET=...`
+     */
+    const val EDGE_FUNCTION_SECRET =
+        "3af817956472bdfeed46927308e7534d118f5db853c84ea6f0f439e4291f7655"
 
     /** Password required before Reconnect via Plaid (avoids accidental Trial slot use). */
     const val PLAID_RECONNECT_PASSWORD = "65483324"

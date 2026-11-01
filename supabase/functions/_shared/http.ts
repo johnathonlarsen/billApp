@@ -1,6 +1,9 @@
 export const corsHeaders: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  // Native Android clients do not use CORS; keep browser access locked down.
+  'Access-Control-Allow-Origin': 'null',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type, x-family-bank-key',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 export function jsonResponse(body: unknown, status = 200): Response {

@@ -16,8 +16,8 @@ android {
         applicationId = "com.family.bankapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 54
-        versionName = "1.8.6"
+        versionCode = 55
+        versionName = "1.8.7"
     }
 
     signingConfigs {
@@ -87,7 +87,7 @@ afterEvaluate {
                   "apkUrl": "https://raw.githubusercontent.com/johnathonlarsen/billApp/main/docs/FamilyBank.apk",
                   "apkSizeBytes": $apkSizeBytes,
                   "releasedAt": "${Instant.now()}",
-                  "notes": "Free to spend is the money in your accounts minus bills you still owe. Paid bills and income are already in the bank balance."
+                  "notes": "All backend APIs require app authentication. Update after deploying Supabase secrets + migration 007."
                 }
             """.trimIndent()
             docsDir.resolve("app-update.json").writeText(manifest)

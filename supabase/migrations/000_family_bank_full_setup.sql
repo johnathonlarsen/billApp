@@ -288,32 +288,35 @@ alter table plaid_connection_slots enable row level security;
 alter table plaid_api_call_log enable row level security;
 alter table plaid_item_vault enable row level security;
 
+-- No anon/authenticated policies — all API access via authenticated Edge Functions
 drop policy if exists "anon_read_config" on family_app_config;
-create policy "anon_read_config"
-  on family_app_config for select to anon using (true);
-
 drop policy if exists "anon_read_slots" on plaid_connection_slots;
-create policy "anon_read_slots"
-  on plaid_connection_slots for select to anon using (true);
-
 drop policy if exists "anon_read_api_call_log" on plaid_api_call_log;
-create policy "anon_read_api_call_log"
-  on plaid_api_call_log for select to anon using (true);
 
--- Token vault: no client access (Edge Functions use service_role)
+revoke all on table family_app_config from anon, authenticated;
+revoke all on table plaid_connection_slots from anon, authenticated;
+revoke all on table plaid_api_call_log from anon, authenticated;
 revoke all on table plaid_item_vault from anon, authenticated;
+
+grant all on table family_app_config to service_role;
+grant all on table plaid_connection_slots to service_role;
+grant all on table plaid_api_call_log to service_role;
 grant all on table plaid_item_vault to service_role;
 
-grant select on plaid_api_budget_summary to anon, authenticated;
+revoke select on plaid_api_budget_summary from anon, authenticated;
+grant select on plaid_api_budget_summary to service_role;
 
--- App may READ counters only
-grant execute on function get_plaid_usage(text) to anon, authenticated;
-grant execute on function get_plaid_api_budget(text) to anon, authenticated;
+revoke execute on function get_plaid_usage(text) from anon, authenticated, public;
+revoke execute on function get_plaid_api_budget(text) from anon, authenticated, public;
+revoke execute on function register_plaid_slot(text) from anon, authenticated, public;
+revoke execute on function mark_plaid_slot_removed(uuid) from anon, authenticated, public;
+revoke execute on function consume_plaid_api_calls(text, int, text) from anon, authenticated, public;
 
--- Writes only via Edge Functions (service role)
-revoke execute on function register_plaid_slot(text) from anon, authenticated;
-revoke execute on function mark_plaid_slot_removed(uuid) from anon, authenticated;
-revoke execute on function consume_plaid_api_calls(text, int, text) from anon, authenticated;
+grant execute on function get_plaid_usage(text) to service_role;
+grant execute on function get_plaid_api_budget(text) to service_role;
+grant execute on function register_plaid_slot(text) to service_role;
+grant execute on function mark_plaid_slot_removed(uuid) to service_role;
+grant execute on function consume_plaid_api_calls(text, int, text) to service_role;
 
 -- -----------------------------------------------------------------------------
 -- 6. Verify (optional — should return JSON with used/limit)
