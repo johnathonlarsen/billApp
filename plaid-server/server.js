@@ -3,6 +3,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { Configuration, PlaidApi, PlaidEnvironments, Products, CountryCode } = require('plaid');
@@ -14,9 +15,27 @@ const PLAID_ENV = process.env.PLAID_ENV || 'sandbox';
 const ANDROID_PACKAGE = process.env.ANDROID_PACKAGE_NAME || 'com.family.bankapp';
 const ITEM_LIMIT = parseInt(process.env.PLAID_ITEM_LIMIT || '10', 10);
 const ITEMS_FILE = path.join(__dirname, 'items.json');
+const API_SECRET = (process.env.FAMILY_APP_API_SECRET || process.env.API_SECRET || '').trim();
+const ALLOW_DEPRECATED = process.env.ALLOW_DEPRECATED_PLAID_SERVER === 'true';
+
+if (!ALLOW_DEPRECATED) {
+  console.error(
+    'Refusing to start deprecated plaid-server. Use Supabase Edge Functions.\n' +
+      'Set ALLOW_DEPRECATED_PLAID_SERVER=true only for local emergency use.'
+  );
+  process.exit(1);
+}
 
 if (!CLIENT_ID || !SECRET) {
   console.error('Set PLAID_CLIENT_ID and PLAID_SECRET in .env (copy from .env.example)');
+  process.exit(1);
+}
+
+if (API_SECRET.length < 16) {
+  console.error(
+    'Set FAMILY_APP_API_SECRET (or API_SECRET) to a value at least 16 characters. ' +
+      'Unauthenticated plaid-server is not allowed.'
+  );
   process.exit(1);
 }
 
@@ -107,13 +126,36 @@ function markItemRemoved(itemId) {
   }
 }
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+function timingSafeEqualString(a, b) {
+  const left = Buffer.from(String(a));
+  const right = Buffer.from(String(b));
+  if (left.length !== right.length) {
+    crypto.timingSafeEqual(left, left);
+    return false;
+  }
+  return crypto.timingSafeEqual(left, right);
+}
 
+function requireApiAuth(req, res, next) {
+  const provided = String(
+    req.get('x-family-bank-key') || req.get('authorization')?.replace(/^Bearer\s+/i, '') || ''
+  ).trim();
+  if (!provided || !timingSafeEqualString(provided, API_SECRET)) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  return next();
+}
+
+const app = express();
+app.use(cors({ origin: false }));
+app.use(express.json({ limit: '64kb' }));
+
+// Health is the only unauthenticated route (no secrets / no Plaid data).
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, env: PLAID_ENV });
+  res.json({ ok: true, env: PLAID_ENV, deprecated: true });
 });
+
+app.use(requireApiAuth);
 
 /** Check Plaid item usage before connecting — call this before opening Link. */
 app.get('/plaid/usage', (_req, res) => {
@@ -176,10 +218,11 @@ app.post('/item/public_token/exchange', async (req, res) => {
 
     registerItem(itemId, bank_label, replacing_item_id);
 
+    // Plaid policy: never return access_token to clients.
     res.json({
-      access_token: response.data.access_token,
       item_id: itemId,
       usage: getUsage(),
+      note: 'access_token retained server-side only',
     });
   } catch (err) {
     console.error('public_token/exchange', err.response?.data || err.message);
@@ -256,7 +299,7 @@ app.post('/transactions/sync', async (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Family Bank Plaid server on http://0.0.0.0:${PORT} (${PLAID_ENV})`);
-  console.log(`Plaid item limit: ${ITEM_LIMIT} (set PLAID_ITEM_LIMIT in .env)`);
+app.listen(PORT, '127.0.0.1', () => {
+  console.log(`DEPRECATED Family Bank Plaid server on http://127.0.0.1:${PORT} (${PLAID_ENV})`);
+  console.log('All routes except /health require X-Family-Bank-Key.');
 });

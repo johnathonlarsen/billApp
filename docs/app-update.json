@@ -1,8 +1,8 @@
 {
-  "versionCode": 54,
-  "versionName": "1.8.6",
+  "versionCode": 55,
+  "versionName": "1.8.7",
   "apkUrl": "https://raw.githubusercontent.com/johnathonlarsen/billApp/main/docs/FamilyBank.apk",
   "apkSizeBytes": 16400633,
-  "releasedAt": "2026-10-14T15:27:24.757805289Z",
-  "notes": "Free to spend is the money in your accounts minus bills you still owe. Paid bills and income are already in the bank balance."
+  "releasedAt": "2026-11-01T21:06:16.741936889Z",
+  "notes": "All backend APIs require app authentication. Update after deploying Supabase secrets + migration 007."
 }
