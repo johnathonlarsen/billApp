@@ -297,7 +297,7 @@ private fun FreeToSpendCard(
             )
             Text(
                 buildString {
-                    append("Bank ${MoneyFormatter.format(fts.liquidBalanceCents)}")
+                    append("Bank (available) ${MoneyFormatter.format(fts.liquidBalanceCents)}")
                     append(" − still due ${MoneyFormatter.format(fts.remainingBillsThisMonthCents)}")
                     if (fts.priorOverdueUnpaidCents > 0) {
                         append(" − prior ${MoneyFormatter.format(fts.priorOverdueUnpaidCents)}")

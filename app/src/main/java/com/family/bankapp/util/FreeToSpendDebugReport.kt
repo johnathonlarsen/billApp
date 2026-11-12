@@ -107,6 +107,14 @@ object FreeToSpendDebugReport {
         )
         appendLine()
 
+        appendLine("=== Pending Plaid transactions (already subtracted from available balance) ===")
+        appendPendingTransactions(
+            transactions = overview.plaidTransactions,
+            accounts = overview.accounts,
+            yearMonth = currentMonth
+        )
+        appendLine()
+
         appendLine("=== Accounts in liquid balance reference ===")
         appendAccounts(overview.accounts, overview.banks.associateBy { it.id })
         appendLine()
@@ -119,7 +127,7 @@ object FreeToSpendDebugReport {
     }.trimEnd()
 
     private fun StringBuilder.appendFormulaBreakdown(snapshot: FreeToSpendSnapshot) {
-        appendLine("Bank balance:        ${MoneyFormatter.format(snapshot.liquidBalanceCents)}")
+        appendLine("Bank balance (available): ${MoneyFormatter.format(snapshot.liquidBalanceCents)}")
         appendLine("  - still due:       ${MoneyFormatter.format(snapshot.remainingBillsThisMonthCents)}")
         appendLine("  - prior overdue:   ${MoneyFormatter.format(snapshot.priorOverdueUnpaidCents)}")
         appendLine("= ${MoneyFormatter.format(snapshot.freeToSpendCents)} free to spend")
@@ -502,6 +510,48 @@ object FreeToSpendDebugReport {
         }
     }
 
+    private fun StringBuilder.appendPendingTransactions(
+        transactions: List<PlaidTransactionEntity>,
+        accounts: List<AccountEntity>,
+        yearMonth: YearMonth
+    ) {
+        val spendingPlaidAccountIds = accounts.mapNotNull { account ->
+            val counts = when (account.accountType) {
+                AccountType.CHECKING -> true
+                AccountType.SAVINGS -> account.includeInFreeToSpend
+                AccountType.CREDIT -> false
+            }
+            if (counts) account.plaidAccountId else null
+        }.toSet()
+        val accountNameByPlaidId = accounts.mapNotNull { account ->
+            account.plaidAccountId?.let { it to account.name }
+        }.toMap()
+        // Pending debits are already subtracted from balance_available, so
+        // they are NOT subtracted again in free to spend — this section exists
+        // only so a current-vs-available gap can be reconciled.
+        val pending = transactions.filter { tx ->
+            tx.plaidAccountId in spendingPlaidAccountIds &&
+                tx.pending &&
+                tx.amountCents > 0 &&
+                runCatching { YearMonth.from(LocalDate.parse(tx.date)) }.getOrNull() == yearMonth
+        }.sortedByDescending { it.date }
+        if (pending.isEmpty()) {
+            appendLine("(none — available balance equals current balance)")
+            return
+        }
+        pending.forEach { tx ->
+            val accountName = accountNameByPlaidId[tx.plaidAccountId] ?: tx.plaidAccountId
+            appendLine(
+                "- ${tx.date} | ${tx.name} | ${MoneyFormatter.format(tx.amountCents)} | account: $accountName" +
+                    merchantSuffix(tx)
+            )
+        }
+        appendLine(
+            "Total pending debits: ${MoneyFormatter.format(pending.sumOf { it.amountCents })} " +
+                "(already subtracted from available balance, do not subtract again)"
+        )
+    }
+
     private fun StringBuilder.appendAccounts(
         accounts: List<AccountEntity>,
         banksById: Map<Long, com.family.bankapp.data.entity.BankEntity>
@@ -517,9 +567,13 @@ object FreeToSpendDebugReport {
                 AccountType.CHECKING -> true
                 AccountType.SAVINGS -> account.includeInFreeToSpend
             }
+            val currentNote = account.currentBalanceCents?.let { current ->
+                val pending = current - account.balanceCents
+                " | current ${MoneyFormatter.format(current)} | pending ${MoneyFormatter.format(pending)}"
+            } ?: ""
             appendLine(
                 "- $bankName · ${account.name} | ${account.accountType.name} | " +
-                    "balance ${MoneyFormatter.format(account.balanceCents)} | " +
+                    "available ${MoneyFormatter.format(account.balanceCents)}$currentNote | " +
                     if (included) "included" else "excluded"
             )
         }
