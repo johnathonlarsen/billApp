@@ -165,6 +165,17 @@ object FreeToSpendCalculator {
         AccountType.SAVINGS -> account.includeInFreeToSpend
     }
 
+    /** Pending outflows saved for this account. Zero when none are detected. */
+    fun pendingDebitCents(
+        account: AccountEntity,
+        transactions: List<PlaidTransactionEntity>
+    ): Long {
+        val plaidId = account.plaidAccountId ?: return 0L
+        return transactions.sumOf { tx ->
+            if (tx.plaidAccountId == plaidId && tx.pending && tx.amountCents > 0) tx.amountCents else 0L
+        }
+    }
+
     fun freeToSpendBalance(accounts: List<AccountEntity>): Long =
         accounts.sumOf { account ->
             if (countsTowardFreeToSpend(account)) account.balanceCents else 0L

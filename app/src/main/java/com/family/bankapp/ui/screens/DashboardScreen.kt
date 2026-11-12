@@ -37,6 +37,9 @@ import com.family.bankapp.ui.components.MoneyText
 import com.family.bankapp.ui.components.SectionHeader
 import com.family.bankapp.ui.components.StatCard
 import com.family.bankapp.ui.viewmodel.DashboardViewModel
+import com.family.bankapp.data.entity.AccountEntity
+import com.family.bankapp.data.entity.PlaidTransactionEntity
+import com.family.bankapp.util.FreeToSpendCalculator
 import com.family.bankapp.util.FreeToSpendSnapshot
 import com.family.bankapp.util.MoneyFormatter
 import com.family.bankapp.util.MonthPillStatus
@@ -81,6 +84,8 @@ fun DashboardScreen(padding: PaddingValues) {
             item {
                 FreeToSpendCard(
                     fts = fts,
+                    accounts = state.overview.accounts,
+                    transactions = state.overview.plaidTransactions,
                     onCopyDebug = {
                         vm.buildFreeToSpendDebugReport()?.let { text ->
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -250,6 +255,8 @@ fun DashboardScreen(padding: PaddingValues) {
 @Composable
 private fun FreeToSpendCard(
     fts: FreeToSpendSnapshot,
+    accounts: List<AccountEntity>,
+    transactions: List<PlaidTransactionEntity>,
     onCopyDebug: () -> Unit
 ) {
     val isShort = fts.freeToSpendCents < 0
@@ -320,6 +327,19 @@ private fun FreeToSpendCard(
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.error
+                )
+            }
+            accounts.forEach { account ->
+                val pending = FreeToSpendCalculator.pendingDebitCents(account, transactions)
+                Text(
+                    "${account.name} · Pending ${MoneyFormatter.format(pending)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (pending > 0) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (pending > 0) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
                 )
             }
             Text(

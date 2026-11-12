@@ -63,6 +63,7 @@ import com.family.bankapp.data.model.AccountType
 import com.family.bankapp.data.model.BillRecurrence
 import com.family.bankapp.util.MoneyFormatter
 import com.family.bankapp.util.PlaidTransactionSearch
+import com.family.bankapp.util.FreeToSpendCalculator
 import com.family.bankapp.data.repository.BankRepository
 import com.family.bankapp.plaid.PlaidBankSyncResult
 import com.family.bankapp.plaid.PlaidNameMatcher
@@ -547,6 +548,14 @@ fun BankDetailScreen(
 
             item { SectionHeader("Accounts") }
 
+            items(item.accounts, key = { account -> "account-${account.id}" }) { account ->
+                BankAccountSummaryCard(
+                    account = account,
+                    pendingCents = FreeToSpendCalculator.pendingDebitCents(account, plaidTransactions),
+                    onEdit = { editingAccount = account }
+                )
+            }
+
             if (item.accounts.isEmpty()) {
                 item {
                     Text(
@@ -629,18 +638,6 @@ fun BankDetailScreen(
                         }
                     }
                 } else selectedAccountTab?.let { tab ->
-                    tab.account?.let { account ->
-                        item {
-                            BankAccountSummaryCard(
-                                account = account,
-                                pendingCents = tab.transactions
-                                    .filter { it.pending && it.amountCents > 0 }
-                                    .sumOf { it.amountCents },
-                                onEdit = { editingAccount = account }
-                            )
-                        }
-                    }
-
                     if (isPlaidConnected || plaidTransactions.isNotEmpty()) {
                         item {
                             Text(
@@ -1200,14 +1197,16 @@ private fun BankAccountSummaryCard(
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium
                 )
-                if (pendingCents > 0) {
-                    Text(
-                        "Pending ${MoneyFormatter.format(pendingCents)}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
+                Text(
+                    "Pending ${MoneyFormatter.format(pendingCents)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (pendingCents > 0) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (pendingCents > 0) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
                 if (!account.plaidAccountId.isNullOrBlank()) {
                     Text(
                         "From Plaid",

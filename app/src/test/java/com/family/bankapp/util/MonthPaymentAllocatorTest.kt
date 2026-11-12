@@ -323,6 +323,42 @@ class MonthPaymentAllocatorTest {
         assertFalse(dueInfo.isOverdue)
     }
 
+    @Test
+    fun pendingDebitCents_isZeroWhenNoneAreDetected() {
+        val checking = checking(1, "360 Checking ···4440", 38_381).copy(plaidAccountId = "acct_4440")
+        val other = checking(2, "360 Checking ···7098", 341).copy(plaidAccountId = "acct_7098")
+        val posted = PlaidTransactionEntity(
+            plaidTransactionId = "posted",
+            bankId = 1,
+            plaidAccountId = "acct_4440",
+            amountCents = 500,
+            date = "2026-11-11",
+            name = "STORE",
+            pending = false
+        )
+
+        assertEquals(0L, FreeToSpendCalculator.pendingDebitCents(checking, listOf(posted)))
+        assertEquals(0L, FreeToSpendCalculator.pendingDebitCents(other, listOf(posted)))
+        assertEquals(
+            2_151L,
+            FreeToSpendCalculator.pendingDebitCents(
+                other,
+                listOf(
+                    posted,
+                    PlaidTransactionEntity(
+                        plaidTransactionId = "hold",
+                        bankId = 1,
+                        plaidAccountId = "acct_7098",
+                        amountCents = 2_151,
+                        date = "2026-11-11",
+                        name = "PENDING",
+                        pending = true
+                    )
+                )
+            )
+        )
+    }
+
     private fun BillEntity.toOutstanding(): MonthBillEntry {
         val due = BillSchedule.dueDateForYearMonth(this, september)
         return MonthBillEntry(

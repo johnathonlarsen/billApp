@@ -16,8 +16,8 @@ android {
         applicationId = "com.family.bankapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 56
-        versionName = "1.8.8"
+        versionCode = 57
+        versionName = "1.8.9"
     }
 
     signingConfigs {
@@ -87,7 +87,7 @@ afterEvaluate {
                   "apkUrl": "https://raw.githubusercontent.com/johnathonlarsen/billApp/main/docs/FamilyBank.apk",
                   "apkSizeBytes": $apkSizeBytes,
                   "releasedAt": "${Instant.now()}",
-                  "notes": "Free to spend subtracts pending holds that are still included in the saved bank balance, and Home shows that pending amount."
+                  "notes": "Each bank account shows its pending amount. Accounts with no pending hold show Pending $0.00."
                 }
             """.trimIndent()
             docsDir.resolve("app-update.json").writeText(manifest)
