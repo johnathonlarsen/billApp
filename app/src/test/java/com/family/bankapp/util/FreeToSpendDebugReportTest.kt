@@ -146,6 +146,23 @@ class FreeToSpendDebugReportTest {
         assertTrue(report.contains("freeToSpendCents: -1810"))
     }
 
+    @Test
+    fun creditCard_showsAmountOwedAndNotRemainingCredit() {
+        val card = AccountEntity(
+            id = 2,
+            bankId = 1,
+            name = "Quicksilver",
+            accountType = AccountType.CREDIT,
+            balanceCents = 50_000,
+            currentBalanceCents = 50_000,
+            plaidAccountId = "acct_credit"
+        )
+        val report = report(accounts = listOf(card))
+
+        assertTrue(report.contains("Quicksilver | CREDIT | balance $500.00 | excluded"))
+        assertFalse(report.contains("Quicksilver | CREDIT | available"))
+    }
+
     private fun report(
         bills: List<BillEntity> = emptyList(),
         payments: List<PaymentRecordEntity> = emptyList(),

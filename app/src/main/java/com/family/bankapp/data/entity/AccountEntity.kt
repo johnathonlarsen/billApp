@@ -24,13 +24,16 @@ data class AccountEntity(
     val name: String,
     val accountType: AccountType,
     /**
-     * Spendable balance — Plaid `balance_available` when reported, otherwise
-     * `balance_current`. Can be negative on an account with pending holds
-     * larger than its current balance (e.g. 360 Checking ···7098 on
-     * 2026-11-11: current $3.41, pending $21.51, available −$18.10).
+     * Checking and savings from Plaid: `balance_available` (can be negative
+     * when pending holds exceed the current balance, as on 360 Checking
+     * ···7098 on 2026-11-11). Credit cards and manual accounts: the balance
+     * itself — amount owed on a card, not remaining credit.
      */
     val balanceCents: Long,
-    /** Plaid `balance_current`, kept so the debug report can show pending = current − available. Null for manual accounts. */
+    /**
+     * Plaid `balance_current`. Null on manual accounts. For a checking or
+     * savings account, current − [balanceCents] is the pending gap.
+     */
     val currentBalanceCents: Long? = null,
     /** Set when imported from Plaid /accounts/get. */
     val plaidAccountId: String? = null,

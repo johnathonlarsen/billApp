@@ -11,13 +11,13 @@ data class PlaidAccountSnapshot(
     val type: String?,
     val subtype: String?,
     /**
-     * Spendable balance. Plaid's `balance_available` already subtracts pending
-     * holds, while `balance_current` does not — using current overstated free
-     * to spend by the pending total (e.g. $21.51 on 2026-11-11).
-     * Prefer available whenever Plaid reports it.
+     * Balance stored for this account. Depository accounts use Plaid
+     * `balance_available` (current minus pending holds). Credit cards and
+     * loans keep `balance_current` — on a card, available is remaining credit,
+     * not the amount owed.
      */
     val balanceCents: Long,
-    /** Plaid `balance_current`, kept for the debug report (current − available = pending). */
+    /** Plaid `balance_current`. On a checking account, current − available is the pending gap. */
     val currentBalanceCents: Long? = null
 )
 
@@ -51,31 +51,50 @@ data class PlaidBankSyncResult(
 )
 
 /**
- * Spendable balance in cents: Plaid `balance_available` when reported,
- * otherwise `balance_current`. Pure function so it can be unit-tested
- * without parsing JSON (org.json is stubbed in JVM unit tests).
+ * Depository spendable balance in cents: Plaid `balance_available` when
+ * reported, otherwise `balance_current`.
  */
 fun availableBalanceCents(current: Double?, available: Double?): Long =
     ((available ?: current ?: 0.0) * 100).roundToLong()
+
+/**
+ * Balance to store, in cents.
+ *
+ * Checking and savings (`type` depository) use available, which already
+ * subtracts pending holds. Using current there overstated free to spend by
+ * the pending total (360 Checking ···7098 on 2026-11-11: current $3.41,
+ * pending $21.51, available −$18.10).
+ *
+ * Credit cards, loans, and anything else keep current. Available on a credit
+ * card is remaining credit, and free-to-spend treats a credit balance as
+ * debt. Pure function so it can be unit-tested without parsing JSON
+ * (org.json is stubbed in JVM unit tests).
+ */
+fun accountBalanceCents(type: String?, current: Double?, available: Double?): Long {
+    val dollars = if (type.equals("depository", ignoreCase = true)) {
+        available ?: current ?: 0.0
+    } else {
+        current ?: available ?: 0.0
+    }
+    return (dollars * 100).roundToLong()
+}
 
 fun JSONObject.toPlaidAccountsSyncResult(): PlaidAccountsSyncResult {
     val accounts = getJSONArray("accounts")
     val list = buildList {
         for (i in 0 until accounts.length()) {
             val a = accounts.getJSONObject(i)
-            // Available is what you can actually spend: current minus pending.
-            // Fall back to current only when Plaid does not report available
-            // (some account types / institutions omit it).
             val current = if (!a.isNull("balance_current")) a.getDouble("balance_current") else null
             val available = if (!a.isNull("balance_available")) a.getDouble("balance_available") else null
+            val type = a.optString("type").takeIf { it.isNotBlank() }
             add(
                 PlaidAccountSnapshot(
                     accountId = a.getString("account_id"),
                     name = buildAccountDisplayName(a),
                     mask = a.optString("mask").takeIf { it.isNotBlank() },
-                    type = a.optString("type").takeIf { it.isNotBlank() },
+                    type = type,
                     subtype = a.optString("subtype").takeIf { it.isNotBlank() },
-                    balanceCents = availableBalanceCents(current, available),
+                    balanceCents = accountBalanceCents(type, current, available),
                     currentBalanceCents = current?.let { (it * 100).roundToLong() }
                 )
             )

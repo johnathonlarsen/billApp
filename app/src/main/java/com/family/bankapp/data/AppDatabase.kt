@@ -217,11 +217,11 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL(
                     "ALTER TABLE accounts ADD COLUMN currentBalanceCents INTEGER"
                 )
-                // balanceCents previously held balance_current; keep it as the
-                // current balance until the next Plaid sync overwrites it with
-                // balance_available. That sync also fills currentBalanceCents.
+                // Plaid rows previously stored balance_current in balanceCents.
+                // Remember that figure until the next sync writes available
+                // onto checking and savings. Manual accounts stay null.
                 db.execSQL(
-                    "UPDATE accounts SET currentBalanceCents = balanceCents"
+                    "UPDATE accounts SET currentBalanceCents = balanceCents WHERE plaidAccountId IS NOT NULL"
                 )
             }
         }

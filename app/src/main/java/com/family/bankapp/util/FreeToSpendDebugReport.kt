@@ -567,13 +567,19 @@ object FreeToSpendDebugReport {
                 AccountType.CHECKING -> true
                 AccountType.SAVINGS -> account.includeInFreeToSpend
             }
-            val currentNote = account.currentBalanceCents?.let { current ->
-                val pending = current - account.balanceCents
-                " | current ${MoneyFormatter.format(current)} | pending ${MoneyFormatter.format(pending)}"
-            } ?: ""
+            // Credit available is remaining credit, so current − balance is not
+            // a pending hold. Only checking and savings get that breakdown.
+            val currentBalance = account.currentBalanceCents
+            val balanceText = if (account.accountType != AccountType.CREDIT && currentBalance != null) {
+                val pending = currentBalance - account.balanceCents
+                "available ${MoneyFormatter.format(account.balanceCents)} | " +
+                    "current ${MoneyFormatter.format(currentBalance)} | pending ${MoneyFormatter.format(pending)}"
+            } else {
+                "balance ${MoneyFormatter.format(account.balanceCents)}"
+            }
             appendLine(
                 "- $bankName · ${account.name} | ${account.accountType.name} | " +
-                    "available ${MoneyFormatter.format(account.balanceCents)}$currentNote | " +
+                    "$balanceText | " +
                     if (included) "included" else "excluded"
             )
         }
