@@ -10,7 +10,15 @@ data class PlaidAccountSnapshot(
     val mask: String?,
     val type: String?,
     val subtype: String?,
-    val balanceCents: Long
+    /**
+     * Spendable balance. Plaid's `balance_available` already subtracts pending
+     * holds, while `balance_current` does not — using current overstated free
+     * to spend by the pending total (e.g. $21.51 on 2026-11-11).
+     * Prefer available whenever Plaid reports it.
+     */
+    val balanceCents: Long,
+    /** Plaid `balance_current`, kept for the debug report (current − available = pending). */
+    val currentBalanceCents: Long? = null
 )
 
 data class PlaidTransactionSnapshot(
@@ -42,16 +50,24 @@ data class PlaidBankSyncResult(
     val autoPaymentsApplied: Int = 0
 )
 
+/**
+ * Spendable balance in cents: Plaid `balance_available` when reported,
+ * otherwise `balance_current`. Pure function so it can be unit-tested
+ * without parsing JSON (org.json is stubbed in JVM unit tests).
+ */
+fun availableBalanceCents(current: Double?, available: Double?): Long =
+    ((available ?: current ?: 0.0) * 100).roundToLong()
+
 fun JSONObject.toPlaidAccountsSyncResult(): PlaidAccountsSyncResult {
     val accounts = getJSONArray("accounts")
     val list = buildList {
         for (i in 0 until accounts.length()) {
             val a = accounts.getJSONObject(i)
-            val balance = when {
-                !a.isNull("balance_current") -> a.getDouble("balance_current")
-                !a.isNull("balance_available") -> a.getDouble("balance_available")
-                else -> 0.0
-            }
+            // Available is what you can actually spend: current minus pending.
+            // Fall back to current only when Plaid does not report available
+            // (some account types / institutions omit it).
+            val current = if (!a.isNull("balance_current")) a.getDouble("balance_current") else null
+            val available = if (!a.isNull("balance_available")) a.getDouble("balance_available") else null
             add(
                 PlaidAccountSnapshot(
                     accountId = a.getString("account_id"),
@@ -59,7 +75,8 @@ fun JSONObject.toPlaidAccountsSyncResult(): PlaidAccountsSyncResult {
                     mask = a.optString("mask").takeIf { it.isNotBlank() },
                     type = a.optString("type").takeIf { it.isNotBlank() },
                     subtype = a.optString("subtype").takeIf { it.isNotBlank() },
-                    balanceCents = (balance * 100).roundToLong()
+                    balanceCents = availableBalanceCents(current, available),
+                    currentBalanceCents = current?.let { (it * 100).roundToLong() }
                 )
             )
         }
