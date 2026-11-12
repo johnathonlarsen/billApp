@@ -1,8 +1,8 @@
 {
-  "versionCode": 56,
-  "versionName": "1.8.8",
+  "versionCode": 57,
+  "versionName": "1.8.9",
   "apkUrl": "https://raw.githubusercontent.com/johnathonlarsen/billApp/main/docs/FamilyBank.apk",
   "apkSizeBytes": 16417017,
-  "releasedAt": "2026-11-12T03:01:10.013566281Z",
-  "notes": "Free to spend subtracts pending holds that are still included in the saved bank balance, and Home shows that pending amount."
+  "releasedAt": "2026-11-12T03:51:46.224771448Z",
+  "notes": "Each bank account shows its pending amount. Accounts with no pending hold show Pending $0.00."
 }
