@@ -16,8 +16,8 @@ android {
         applicationId = "com.family.bankapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 55
-        versionName = "1.8.7"
+        versionCode = 56
+        versionName = "1.8.8"
     }
 
     signingConfigs {
@@ -87,7 +87,7 @@ afterEvaluate {
                   "apkUrl": "https://raw.githubusercontent.com/johnathonlarsen/billApp/main/docs/FamilyBank.apk",
                   "apkSizeBytes": $apkSizeBytes,
                   "releasedAt": "${Instant.now()}",
-                  "notes": "Free to spend now uses your bank's available balance, so pending holds are not counted as money you can still spend. Credit cards still show the amount owed."
+                  "notes": "Free to spend subtracts pending holds that are still included in the saved bank balance, and Home shows that pending amount."
                 }
             """.trimIndent()
             docsDir.resolve("app-update.json").writeText(manifest)

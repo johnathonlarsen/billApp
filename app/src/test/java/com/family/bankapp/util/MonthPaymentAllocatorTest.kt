@@ -4,6 +4,7 @@ import com.family.bankapp.data.entity.AccountEntity
 import com.family.bankapp.data.entity.BillEntity
 import com.family.bankapp.data.entity.IncomeEntity
 import com.family.bankapp.data.entity.PaymentRecordEntity
+import com.family.bankapp.data.entity.PlaidTransactionEntity
 import com.family.bankapp.data.model.AccountType
 import com.family.bankapp.data.model.BillCategory
 import com.family.bankapp.data.model.BillRecurrence
@@ -167,6 +168,120 @@ class MonthPaymentAllocatorTest {
         assertEquals(43_143L, snapshot.liquidBalanceCents)
         assertEquals(30_000L, snapshot.remainingBillsThisMonthCents)
         assertEquals(13_143L, snapshot.freeToSpendCents)
+        assertEquals(0L, snapshot.pendingSubtractedCents)
+    }
+
+    @Test
+    fun freeToSpend_subtractsPendingWhileBalanceIsStillCurrent() {
+        // Reported 2026-11-11: stored balances are still Plaid current,
+        // $475.51 together, with a $21.51 pending debit on ···7098 and
+        // $300 of bills still due. Free to spend must be $154.00, and the
+        // pending amount must be visible in the snapshot.
+        val november = LocalDate.of(2026, 11, 11)
+        val rent = bill(1, "Bills", 30_000, dueDay = 1)
+        val pending = PlaidTransactionEntity(
+            plaidTransactionId = "pending7098",
+            bankId = 1,
+            plaidAccountId = "acct_7098",
+            amountCents = 2_151,
+            date = "2026-11-11",
+            name = "PENDING DEBIT",
+            pending = true
+        )
+        val creditPending = PlaidTransactionEntity(
+            plaidTransactionId = "pendingcard",
+            bankId = 1,
+            plaidAccountId = "acct_card",
+            amountCents = 5_000,
+            date = "2026-11-11",
+            name = "CARD HOLD",
+            pending = true
+        )
+        val snapshot = FreeToSpendCalculator.calculate(
+            accounts = listOf(
+                AccountEntity(
+                    id = 1,
+                    bankId = 1,
+                    name = "Other cash",
+                    accountType = AccountType.CHECKING,
+                    balanceCents = 47_210,
+                    currentBalanceCents = 47_210,
+                    plaidAccountId = "acct_other"
+                ),
+                AccountEntity(
+                    id = 2,
+                    bankId = 1,
+                    name = "360 Checking ···7098",
+                    accountType = AccountType.CHECKING,
+                    balanceCents = 341,
+                    currentBalanceCents = 341,
+                    plaidAccountId = "acct_7098"
+                ),
+                AccountEntity(
+                    id = 3,
+                    bankId = 1,
+                    name = "Card",
+                    accountType = AccountType.CREDIT,
+                    balanceCents = 20_000,
+                    currentBalanceCents = 20_000,
+                    plaidAccountId = "acct_card"
+                )
+            ),
+            bills = listOf(rent),
+            incomes = emptyList(),
+            payments = emptyList(),
+            skips = emptyList(),
+            plaidTransactions = listOf(pending, creditPending),
+            linkedPlaidTransactionIds = emptySet(),
+            includePriorOverdue = false,
+            today = november
+        )
+
+        assertEquals(2_151L, snapshot.pendingHoldsCents)
+        assertEquals(2_151L, snapshot.pendingSubtractedCents)
+        assertEquals(45_400L, snapshot.liquidBalanceCents)
+        assertEquals(30_000L, snapshot.remainingBillsThisMonthCents)
+        assertEquals(15_400L, snapshot.freeToSpendCents)
+    }
+
+    @Test
+    fun freeToSpend_doesNotSubtractPendingTwiceWhenBalanceIsAvailable() {
+        val snapshot = FreeToSpendCalculator.calculate(
+            accounts = listOf(
+                AccountEntity(
+                    id = 1,
+                    bankId = 1,
+                    name = "360 Checking ···7098",
+                    accountType = AccountType.CHECKING,
+                    balanceCents = -1_810,
+                    currentBalanceCents = 341,
+                    plaidAccountId = "acct_7098"
+                )
+            ),
+            bills = emptyList(),
+            incomes = emptyList(),
+            payments = emptyList(),
+            skips = emptyList(),
+            plaidTransactions = listOf(
+                PlaidTransactionEntity(
+                    plaidTransactionId = "pending7098",
+                    bankId = 1,
+                    plaidAccountId = "acct_7098",
+                    amountCents = 2_151,
+                    date = "2026-11-11",
+                    name = "PENDING DEBIT",
+                    pending = true
+                )
+            ),
+            linkedPlaidTransactionIds = emptySet(),
+            includePriorOverdue = false,
+            today = LocalDate.of(2026, 11, 11)
+        )
+
+        assertEquals(-1_810L, snapshot.liquidBalanceCents)
+        assertEquals(-1_810L, snapshot.freeToSpendCents)
+        assertEquals(0L, snapshot.pendingSubtractedCents)
+        assertEquals(2_151L, snapshot.pendingHoldsCents)
     }
 
     @Test

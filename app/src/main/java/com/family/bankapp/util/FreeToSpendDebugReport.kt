@@ -45,6 +45,8 @@ object FreeToSpendDebugReport {
         appendLine("priorOverdueUnpaidCents: ${snapshot.priorOverdueUnpaidCents}")
         appendLine("includePriorOverdue: ${snapshot.includePriorOverdue}")
         appendLine("liquidBalanceCents (reference): ${snapshot.liquidBalanceCents}")
+        appendLine("pendingHoldsCents: ${snapshot.pendingHoldsCents}")
+        appendLine("pendingSubtractedCents: ${snapshot.pendingSubtractedCents}")
         appendLine("monthlyBillsCents (plan): ${snapshot.monthlyBillsCents}")
         appendLine("plannedFreeMonthlyCents: ${snapshot.plannedFreeMonthlyCents}")
         appendLine()
@@ -107,11 +109,10 @@ object FreeToSpendDebugReport {
         )
         appendLine()
 
-        appendLine("=== Pending Plaid transactions (already subtracted from available balance) ===")
+        appendLine("=== Pending Plaid transactions ===")
         appendPendingTransactions(
             transactions = overview.plaidTransactions,
-            accounts = overview.accounts,
-            yearMonth = currentMonth
+            accounts = overview.accounts
         )
         appendLine()
 
@@ -127,12 +128,23 @@ object FreeToSpendDebugReport {
     }.trimEnd()
 
     private fun StringBuilder.appendFormulaBreakdown(snapshot: FreeToSpendSnapshot) {
-        appendLine("Bank balance (available): ${MoneyFormatter.format(snapshot.liquidBalanceCents)}")
+        if (snapshot.pendingSubtractedCents > 0) {
+            val stored = snapshot.liquidBalanceCents + snapshot.pendingSubtractedCents
+            appendLine("Bank balance:        ${MoneyFormatter.format(stored)}")
+            appendLine("  - pending:         ${MoneyFormatter.format(snapshot.pendingSubtractedCents)}")
+        } else {
+            appendLine("Bank balance (available): ${MoneyFormatter.format(snapshot.liquidBalanceCents)}")
+        }
+        val alreadyInBalance = snapshot.pendingHoldsCents - snapshot.pendingSubtractedCents
+        if (alreadyInBalance > 0) {
+            appendLine("Pending already in the bank balance: ${MoneyFormatter.format(alreadyInBalance)}")
+        }
         appendLine("  - still due:       ${MoneyFormatter.format(snapshot.remainingBillsThisMonthCents)}")
         appendLine("  - prior overdue:   ${MoneyFormatter.format(snapshot.priorOverdueUnpaidCents)}")
         appendLine("= ${MoneyFormatter.format(snapshot.freeToSpendCents)} free to spend")
         appendLine(
-            "Compact: Bank ${MoneyFormatter.format(snapshot.liquidBalanceCents)}" +
+            "Compact: Bank ${MoneyFormatter.format(snapshot.liquidBalanceCents + snapshot.pendingSubtractedCents)}" +
+                " - pending ${MoneyFormatter.format(snapshot.pendingSubtractedCents)}" +
                 " - still due ${MoneyFormatter.format(snapshot.remainingBillsThisMonthCents)}" +
                 " - prior ${MoneyFormatter.format(snapshot.priorOverdueUnpaidCents)}"
         )
@@ -512,8 +524,7 @@ object FreeToSpendDebugReport {
 
     private fun StringBuilder.appendPendingTransactions(
         transactions: List<PlaidTransactionEntity>,
-        accounts: List<AccountEntity>,
-        yearMonth: YearMonth
+        accounts: List<AccountEntity>
     ) {
         val spendingPlaidAccountIds = accounts.mapNotNull { account ->
             val counts = when (account.accountType) {
@@ -523,33 +534,45 @@ object FreeToSpendDebugReport {
             }
             if (counts) account.plaidAccountId else null
         }.toSet()
-        val accountNameByPlaidId = accounts.mapNotNull { account ->
-            account.plaidAccountId?.let { it to account.name }
+        val accountByPlaidId = accounts.mapNotNull { account ->
+            account.plaidAccountId?.let { it to account }
         }.toMap()
-        // Pending debits are already subtracted from balance_available, so
-        // they are NOT subtracted again in free to spend — this section exists
-        // only so a current-vs-available gap can be reconciled.
+        // Holds still pending at the bank. When the stored balance is still
+        // Plaid current, free to spend subtracts them. When the stored balance
+        // is already available, they are listed so the gap can be reconciled
+        // and are not subtracted a second time.
         val pending = transactions.filter { tx ->
             tx.plaidAccountId in spendingPlaidAccountIds &&
                 tx.pending &&
-                tx.amountCents > 0 &&
-                runCatching { YearMonth.from(LocalDate.parse(tx.date)) }.getOrNull() == yearMonth
+                tx.amountCents > 0
         }.sortedByDescending { it.date }
         if (pending.isEmpty()) {
-            appendLine("(none — available balance equals current balance)")
+            appendLine("(none)")
             return
         }
+        val subtracted = pending.filter { tx ->
+            val account = accountByPlaidId[tx.plaidAccountId]
+            val current = account?.currentBalanceCents
+            current == null || current == account.balanceCents
+        }
         pending.forEach { tx ->
-            val accountName = accountNameByPlaidId[tx.plaidAccountId] ?: tx.plaidAccountId
+            val accountName = accountByPlaidId[tx.plaidAccountId]?.name ?: tx.plaidAccountId
             appendLine(
                 "- ${tx.date} | ${tx.name} | ${MoneyFormatter.format(tx.amountCents)} | account: $accountName" +
                     merchantSuffix(tx)
             )
         }
-        appendLine(
-            "Total pending debits: ${MoneyFormatter.format(pending.sumOf { it.amountCents })} " +
-                "(already subtracted from available balance, do not subtract again)"
-        )
+        if (subtracted.isNotEmpty()) {
+            appendLine(
+                "Total pending debits: ${MoneyFormatter.format(pending.sumOf { it.amountCents })} " +
+                    "(subtracted from free to spend; the stored balance is still the current balance)"
+            )
+        } else {
+            appendLine(
+                "Total pending debits: ${MoneyFormatter.format(pending.sumOf { it.amountCents })} " +
+                    "(already subtracted from available balance, do not subtract again)"
+            )
+        }
     }
 
     private fun StringBuilder.appendAccounts(

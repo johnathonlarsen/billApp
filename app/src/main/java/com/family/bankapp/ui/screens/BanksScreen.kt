@@ -633,6 +633,9 @@ fun BankDetailScreen(
                         item {
                             BankAccountSummaryCard(
                                 account = account,
+                                pendingCents = tab.transactions
+                                    .filter { it.pending && it.amountCents > 0 }
+                                    .sumOf { it.amountCents },
                                 onEdit = { editingAccount = account }
                             )
                         }
@@ -1173,6 +1176,7 @@ fun BankDetailScreen(
 @Composable
 private fun BankAccountSummaryCard(
     account: AccountEntity,
+    pendingCents: Long = 0,
     onEdit: () -> Unit
 ) {
     Card(
@@ -1196,6 +1200,14 @@ private fun BankAccountSummaryCard(
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium
                 )
+                if (pendingCents > 0) {
+                    Text(
+                        "Pending ${MoneyFormatter.format(pendingCents)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
                 if (!account.plaidAccountId.isNullOrBlank()) {
                     Text(
                         "From Plaid",

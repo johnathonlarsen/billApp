@@ -295,10 +295,36 @@ private fun FreeToSpendCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            if (fts.pendingSubtractedCents > 0) {
+                val storedBank = fts.liquidBalanceCents + fts.pendingSubtractedCents
+                Text(
+                    "Bank ${MoneyFormatter.format(storedBank)}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(
+                    "Pending ${MoneyFormatter.format(fts.pendingSubtractedCents)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.error
+                )
+            } else {
+                Text(
+                    "Bank (available) ${MoneyFormatter.format(fts.liquidBalanceCents)}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            val pendingAlreadyInBalance = fts.pendingHoldsCents - fts.pendingSubtractedCents
+            if (pendingAlreadyInBalance > 0) {
+                Text(
+                    "Pending ${MoneyFormatter.format(pendingAlreadyInBalance)} already taken out of the bank balance",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
             Text(
                 buildString {
-                    append("Bank (available) ${MoneyFormatter.format(fts.liquidBalanceCents)}")
-                    append(" − still due ${MoneyFormatter.format(fts.remainingBillsThisMonthCents)}")
+                    append("Still due ${MoneyFormatter.format(fts.remainingBillsThisMonthCents)}")
                     if (fts.priorOverdueUnpaidCents > 0) {
                         append(" − prior ${MoneyFormatter.format(fts.priorOverdueUnpaidCents)}")
                     }

@@ -39,7 +39,15 @@ data class FreeToSpendSnapshot(
     val currentMonthLabel: String,
     val monthlyBillsCents: Long,
     val plannedFreeMonthlyCents: Long,
-    val liquidBalanceCents: Long
+    /** Spendable cash used in the formula, after pending holds that are still in the stored balance. */
+    val liquidBalanceCents: Long,
+    /** Pending outflows on spending accounts, from transactions or from current − available. */
+    val pendingHoldsCents: Long = 0,
+    /**
+     * Part of [pendingHoldsCents] subtracted to produce [liquidBalanceCents].
+     * Zero when the stored balance is already Plaid's available balance.
+     */
+    val pendingSubtractedCents: Long = 0
 )
 
 object FreeToSpendCalculator {
@@ -58,7 +66,8 @@ object FreeToSpendCalculator {
         val monthlyIncome = incomes.sumOf { RecurrenceNormalizer.toMonthlyCents(it.amountCents, it.recurrence) }
         val monthlyBills = bills.sumOf { RecurrenceNormalizer.toMonthlyCents(it.amountCents, it.recurrence) }
         val plannedFree = monthlyIncome - monthlyBills
-        val liquidBalance = freeToSpendBalance(accounts)
+        val spendable = spendableBalance(accounts, plaidTransactions)
+        val liquidBalance = spendable.spendableCents
 
         val currentMonth = YearMonth.from(today)
         val reservedBills = billsReservedThisMonth(bills, payments, skips, currentMonth)
@@ -100,18 +109,65 @@ object FreeToSpendCalculator {
             currentMonthLabel = currentMonth.format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy")),
             monthlyBillsCents = monthlyBills,
             plannedFreeMonthlyCents = plannedFree,
-            liquidBalanceCents = liquidBalance
+            liquidBalanceCents = liquidBalance,
+            pendingHoldsCents = spendable.pendingHoldsCents,
+            pendingSubtractedCents = spendable.pendingSubtractedCents
         )
+    }
+
+    private data class SpendableBalance(
+        val spendableCents: Long,
+        val pendingHoldsCents: Long,
+        val pendingSubtractedCents: Long
+    )
+
+    /**
+     * Cash that can still be spent.
+     *
+     * After a Plaid sync, checking and savings store available balance, which
+     * already subtracts pending holds (currentBalanceCents differs from
+     * balanceCents). Until that sync, the phone still has the current balance,
+     * so pending debits cached from the last transaction sync are subtracted
+     * here. That is the $21.51 still inside the $175 free-to-spend figure.
+     */
+    private fun spendableBalance(
+        accounts: List<AccountEntity>,
+        transactions: List<PlaidTransactionEntity>
+    ): SpendableBalance {
+        val pendingByAccount = transactions
+            .filter { it.pending && it.amountCents > 0 }
+            .groupBy { it.plaidAccountId }
+            .mapValues { (_, txs) -> txs.sumOf { it.amountCents } }
+
+        var spendable = 0L
+        var pendingHolds = 0L
+        var pendingSubtracted = 0L
+        accounts.forEach { account ->
+            if (!countsTowardFreeToSpend(account)) return@forEach
+            val current = account.currentBalanceCents
+            val balanceAlreadyAvailable = current != null && current != account.balanceCents
+            if (balanceAlreadyAvailable) {
+                spendable += account.balanceCents
+                pendingHolds += (current - account.balanceCents).coerceAtLeast(0L)
+            } else {
+                val pending = account.plaidAccountId?.let { pendingByAccount[it] } ?: 0L
+                spendable += account.balanceCents - pending
+                pendingHolds += pending
+                pendingSubtracted += pending
+            }
+        }
+        return SpendableBalance(spendable, pendingHolds, pendingSubtracted)
+    }
+
+    private fun countsTowardFreeToSpend(account: AccountEntity): Boolean = when (account.accountType) {
+        AccountType.CREDIT -> false
+        AccountType.CHECKING -> true
+        AccountType.SAVINGS -> account.includeInFreeToSpend
     }
 
     fun freeToSpendBalance(accounts: List<AccountEntity>): Long =
         accounts.sumOf { account ->
-            when (account.accountType) {
-                AccountType.CREDIT -> 0L
-                AccountType.CHECKING -> account.balanceCents
-                AccountType.SAVINGS ->
-                    if (account.includeInFreeToSpend) account.balanceCents else 0L
-            }
+            if (countsTowardFreeToSpend(account)) account.balanceCents else 0L
         }
 
     fun trackingStartMonth(bill: BillEntity): YearMonth =

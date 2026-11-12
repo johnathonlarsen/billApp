@@ -138,11 +138,46 @@ class FreeToSpendDebugReportTest {
             transactions = listOf(pending)
         )
 
-        assertTrue(report.contains("Pending Plaid transactions (already subtracted from available balance)"))
+        assertTrue(report.contains("=== Pending Plaid transactions ==="))
         assertTrue(report.contains("PENDING DEBIT | $21.51"))
         assertTrue(report.contains("Total pending debits: $21.51"))
+        assertTrue(report.contains("already subtracted from available balance, do not subtract again"))
         assertTrue(report.contains("available -$18.10 | current $3.41 | pending $21.51"))
         // Free to spend is the (negative) available balance, with no bills due.
+        assertTrue(report.contains("freeToSpendCents: -1810"))
+    }
+
+    @Test
+    fun pendingOnCurrentBalance_isSubtractedFromFreeToSpend() {
+        // Phone still has the current balance from before v1.8.7's sync.
+        // The pending debit is cached, so free to spend must drop by $21.51
+        // and the report must show that pending amount.
+        val account = AccountEntity(
+            id = 1,
+            bankId = 1,
+            name = "360 Checking ···7098",
+            accountType = AccountType.CHECKING,
+            balanceCents = 341,
+            currentBalanceCents = 341,
+            plaidAccountId = "acct_checking"
+        )
+        val pending = PlaidTransactionEntity(
+            plaidTransactionId = "pending1",
+            bankId = 1,
+            plaidAccountId = "acct_checking",
+            amountCents = 2_151,
+            date = "2026-10-12",
+            name = "PENDING DEBIT",
+            pending = true
+        )
+        val report = report(
+            accounts = listOf(account),
+            transactions = listOf(pending)
+        )
+
+        assertTrue(report.contains("PENDING DEBIT | $21.51"))
+        assertTrue(report.contains("subtracted from free to spend"))
+        assertTrue(report.contains("pendingSubtractedCents: 2151"))
         assertTrue(report.contains("freeToSpendCents: -1810"))
     }
 
