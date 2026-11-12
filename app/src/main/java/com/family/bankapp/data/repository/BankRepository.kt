@@ -186,6 +186,7 @@ class BankRepository(
                         name = snapshot.name,
                         accountType = mapPlaidAccountType(snapshot.subtype, snapshot.type),
                         balanceCents = snapshot.balanceCents,
+                        currentBalanceCents = snapshot.currentBalanceCents,
                         lastUpdatedAt = now
                     )
                 )
@@ -196,6 +197,7 @@ class BankRepository(
                         name = snapshot.name,
                         accountType = mapPlaidAccountType(snapshot.subtype, snapshot.type),
                         balanceCents = snapshot.balanceCents,
+                        currentBalanceCents = snapshot.currentBalanceCents,
                         plaidAccountId = snapshot.accountId,
                         lastUpdatedAt = now
                     )
